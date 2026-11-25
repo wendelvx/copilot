@@ -8,6 +8,17 @@
   const LICENSE_API_BASE = '';
   const MAX_MEDIA_BYTES = 15 * 1024 * 1024; // 15 MB por mídia
 
+  const ICONS = {
+    up: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
+    down: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+    edit: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+    trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+    check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    mic: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
+    stop: `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>`,
+    clock: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`
+  };
+
   let state = {
     shortcuts: [],
     followups: [],
@@ -102,19 +113,27 @@
     });
   }
 
-  function insertVariableAtCursor(textarea, idx, token) {
-    if (!textarea) return;
-    const start = textarea.selectionStart ?? textarea.value.length;
-    const end = textarea.selectionEnd ?? textarea.value.length;
-    const current = textarea.value;
+  function escapeAttr(str) {
+    return String(str || '')
+      .replace(/&/g, '&')
+      .replace(/"/g, '"')
+      .replace(/</g, '<')
+      .replace(/>/g, '>');
+  }
+
+  function insertVariableAtCursor(inputEl, idx, token, field = 'content') {
+    if (!inputEl) return;
+    const start = inputEl.selectionStart ?? inputEl.value.length;
+    const end = inputEl.selectionEnd ?? inputEl.value.length;
+    const current = inputEl.value;
     const updated = current.slice(0, start) + token + current.slice(end);
 
-    textarea.value = updated;
-    draftBlocks[idx].content = updated;
-    textarea.focus();
+    inputEl.value = updated;
+    draftBlocks[idx][field] = updated;
+    inputEl.focus();
 
     const newPos = start + token.length;
-    textarea.setSelectionRange(newPos, newPos);
+    inputEl.setSelectionRange(newPos, newPos);
   }
 
   function isPro() {
@@ -171,8 +190,8 @@
     if (state.license.key) {
       document.getElementById('license-key-input').value = state.license.key;
       document.getElementById('license-status-msg').textContent = isPro()
-        ? '✅ Licença PRO ativa neste navegador.'
-        : '⚠️ Licença expirada ou inválida.';
+        ? 'Licença PRO ativa neste navegador.'
+        : 'Licença expirada ou inválida.';
     }
   }
 
@@ -201,13 +220,13 @@
       const first = sc.blocks?.[0];
       const preview = first?.type === 'text'
         ? first.content
-        : `[${(first?.type || 'mídia').toUpperCase()}] ${first?.fileName || ''}`;
+        : `[${(first?.type || 'mídia').toUpperCase()}] ${first?.fileName || ''}${first?.caption ? ` • "${first.caption}"` : ''}`;
 
       const item = document.createElement('div');
       item.className = 'list-item';
       item.innerHTML = `
         <div style="min-width:0;flex:1;">
-          <div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
             <span class="item-title">${sc.title}</span>
             <span class="item-cmd">/${sc.command}</span>
             ${sc.blocks.length > 1 ? `<span class="pro-tag">${sc.blocks.length} blocos</span>` : ''}
@@ -215,10 +234,10 @@
           <div class="item-sub">${preview}</div>
         </div>
         <div class="item-actions" style="display:flex;gap:4px;flex-shrink:0;">
-          <button class="btn-xs" data-up="${idx}" title="Mover para cima" ${idx === 0 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>⬆️</button>
-          <button class="btn-xs" data-down="${idx}" title="Mover para baixo" ${idx === state.shortcuts.length - 1 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>⬇️</button>
-          <button class="btn-xs" data-edit="${sc.id}" title="Editar">✏️</button>
-          <button class="btn-xs" data-del="${sc.id}" title="Excluir">🗑️</button>
+          <button class="btn-xs" data-up="${idx}" title="Mover para cima" style="display:inline-flex;align-items:center;${idx === 0 ? 'opacity:0.35;cursor:default;' : ''}" ${idx === 0 ? 'disabled' : ''}>${ICONS.up}</button>
+          <button class="btn-xs" data-down="${idx}" title="Mover para baixo" style="display:inline-flex;align-items:center;${idx === state.shortcuts.length - 1 ? 'opacity:0.35;cursor:default;' : ''}" ${idx === state.shortcuts.length - 1 ? 'disabled' : ''}>${ICONS.down}</button>
+          <button class="btn-xs" data-edit="${sc.id}" title="Editar" style="display:inline-flex;align-items:center;">${ICONS.edit}</button>
+          <button class="btn-xs" data-del="${sc.id}" title="Excluir" style="display:inline-flex;align-items:center;">${ICONS.trash}</button>
         </div>
       `;
 
@@ -248,12 +267,14 @@
 
       const wrapper = document.createElement('div');
       wrapper.id = 'zc-followups-section';
-      wrapper.style.marginTop = '14px';
-      wrapper.style.paddingTop = '12px';
-      wrapper.style.borderTop = '1px solid #e5e7eb';
+      wrapper.style.marginTop = '16px';
+      wrapper.style.paddingTop = '14px';
+      wrapper.style.borderTop = '1px solid var(--border-subtle)';
       wrapper.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <strong style="font-size:13px;">⏰ Lembretes de Follow-up</strong>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <strong style="font-size:13px;display:inline-flex;align-items:center;gap:6px;color:var(--text-main);">
+            ${ICONS.clock} Lembretes de Follow-up
+          </strong>
           <span id="followups-counter" class="muted" style="font-size:11.5px;"></span>
         </div>
         <div id="followups-list"></div>
@@ -276,7 +297,7 @@
 
     container.innerHTML = '';
     if (pending.length === 0) {
-      container.innerHTML = `<div class="muted" style="font-size:12px;">Nenhum follow-up pendente no momento.</div>`;
+      container.innerHTML = `<div class="muted" style="font-size:12px;padding:8px 2px;">Nenhum follow-up pendente no momento.</div>`;
       return;
     }
 
@@ -286,17 +307,17 @@
       item.className = 'list-item';
       item.innerHTML = `
         <div style="min-width:0;flex:1;">
-          <div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
             <span class="item-title">${fu.contactKey}</span>
-            <span class="item-cmd" style="${overdue ? 'background:#fee2e2;color:#b91c1c;' : ''}">
-              ${overdue ? '⚠️ Vencido • ' : '🕒 '}${formatDateTime(fu.dueAt)}
+            <span class="item-cmd" style="${overdue ? 'background:#fee2e2;color:#b91c1c;' : 'background:var(--amber-soft);color:var(--amber-text);'}">
+              ${overdue ? 'Vencido • ' : ''}${formatDateTime(fu.dueAt)}
             </span>
           </div>
           <div class="item-sub">${fu.note || 'Sem observação'}</div>
         </div>
         <div class="item-actions" style="display:flex;gap:4px;flex-shrink:0;">
-          <button class="btn-xs" data-done-fu="${fu.id}" title="Concluir follow-up">✅</button>
-          <button class="btn-xs" data-del-fu="${fu.id}" title="Excluir follow-up">🗑️</button>
+          <button class="btn-xs" data-done-fu="${fu.id}" title="Concluir follow-up" style="display:inline-flex;align-items:center;color:var(--primary);">${ICONS.check}</button>
+          <button class="btn-xs" data-del-fu="${fu.id}" title="Excluir follow-up" style="display:inline-flex;align-items:center;">${ICONS.trash}</button>
         </div>
       `;
 
@@ -355,7 +376,7 @@
       : [{ type: 'text', content: '' }];
 
     if (pendingBlockType && draftBlocks.length < 3) {
-      draftBlocks.push({ type: pendingBlockType, mediaId: null, fileName: '' });
+      draftBlocks.push({ type: pendingBlockType, mediaId: null, fileName: '', caption: '' });
     }
 
     for (const blk of draftBlocks) {
@@ -453,14 +474,14 @@
       const div = document.createElement('div');
       div.className = 'block-item';
 
-      const labels = { text: '📝 Texto', image: '🖼️ Imagem', document: '📄 Documento/PDF', audio: '🎙️ Áudio (PTT)' };
+      const labels = { text: 'Texto', image: 'Imagem', document: 'Documento / PDF', audio: 'Áudio (PTT)' };
       const isRecordingThis = activeRecorder && activeRecordingIdx === idx;
 
       let bodyHtml = '';
       if (blk.type === 'text') {
         bodyHtml = `
-          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
-            <span class="muted" style="font-size:11px;">Inserir variável:</span>
+          <div style="display:flex;gap:5px;align-items:center;margin-bottom:7px;flex-wrap:wrap;">
+            <span class="muted" style="font-size:11px;">Variáveis:</span>
             <button type="button" class="btn-xs" data-var="{nome}" title="Primeiro nome do contato">+ {nome}</button>
             <button type="button" class="btn-xs" data-var="{nome_completo}" title="Nome completo do contato">+ {nome_completo}</button>
             <button type="button" class="btn-xs" data-var="{saudacao}" title="Bom dia / Boa tarde / Boa noite">+ {saudacao}</button>
@@ -469,20 +490,28 @@
         `;
       } else if (blk.type === 'audio') {
         bodyHtml = `
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
-            <button type="button" class="btn-xs" data-rec-idx="${idx}" style="${isRecordingThis ? 'background:#dc2626;color:#fff;border-color:#dc2626;' : ''}">
-              ${isRecordingThis ? `⏹️ Parar (<span id="rec-timer-${idx}">${formatDuration(recordingSeconds)}</span>)` : '🎙️ Gravar agora'}
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+            <button type="button" class="btn-xs" data-rec-idx="${idx}" style="display:inline-flex;align-items:center;gap:5px;${isRecordingThis ? 'background:#dc2626;color:#fff;border-color:#dc2626;' : 'background:var(--primary-soft);color:var(--primary);border-color:var(--primary-border);'}">
+              ${isRecordingThis ? `${ICONS.stop} Parar (<span id="rec-timer-${idx}">${formatDuration(recordingSeconds)}</span>)` : `${ICONS.mic} Gravar agora`}
             </button>
-            <span class="muted">ou anexe um arquivo:</span>
+            <span class="muted" style="font-size:11.5px;">ou anexe um arquivo:</span>
           </div>
-          <input type="file" data-file-idx="${idx}" accept=".ogg,.mp3,.wav,.m4a,.webm,audio/*" />
-          <div class="muted" style="margin-top:4px;">${blk.fileName ? `Áudio pronto: ${blk.fileName}` : 'Grave pelo microfone ou selecione um arquivo (máx. 15 MB)'}</div>
-          ${blk.previewUrl ? `<audio controls src="${blk.previewUrl}" style="width:100%;height:34px;margin-top:6px;"></audio>` : ''}
+          <input type="file" data-file-idx="${idx}" accept=".ogg,.mp3,.wav,.m4a,.webm,audio/*" style="font-size:11.5px;" />
+          <div class="muted" style="margin-top:5px;">${blk.fileName ? `Áudio pronto: ${blk.fileName}` : 'Grave pelo microfone ou selecione um arquivo (máx. 15 MB)'}</div>
+          ${blk.previewUrl ? `<audio controls src="${blk.previewUrl}" style="width:100%;height:34px;margin-top:8px;border-radius:8px;"></audio>` : ''}
         `;
       } else {
         bodyHtml = `
-          <input type="file" data-file-idx="${idx}" accept="${blk.type === 'image' ? 'image/*' : '.pdf,.doc,.docx,.xls,.xlsx,*/*'}" />
-          <div class="muted" style="margin-top:4px;">${blk.fileName ? `Arquivo pronto: ${blk.fileName}` : 'Selecione o arquivo (máx. 15 MB)'}</div>
+          <input type="file" data-file-idx="${idx}" accept="${blk.type === 'image' ? 'image/*' : '.pdf,.doc,.docx,.xls,.xlsx,*/*'}" style="font-size:11.5px;" />
+          <div class="muted" style="margin-top:5px;">${blk.fileName ? `Arquivo pronto: ${blk.fileName}` : 'Selecione o arquivo (máx. 15 MB)'}</div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-subtle);">
+            <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap;">
+              <span class="muted" style="font-size:11px;">Legenda (opcional):</span>
+              <button type="button" class="btn-xs" data-cap-var="{nome}" title="Primeiro nome">+ {nome}</button>
+              <button type="button" class="btn-xs" data-cap-var="{saudacao}" title="Saudação">+ {saudacao}</button>
+            </div>
+            <input type="text" data-cap-idx="${idx}" value="${escapeAttr(blk.caption || '')}" placeholder="Ex: Segue o arquivo solicitado, {nome}!" />
+          </div>
         `;
       }
 
@@ -491,8 +520,8 @@
           <span><strong>${idx + 1}º envio:</strong> ${labels[blk.type] || blk.type}</span>
           <div style="display:flex;gap:4px;align-items:center;">
             ${draftBlocks.length > 1 ? `
-              <button type="button" class="btn-xs" data-blk-up="${idx}" title="Enviar antes" ${idx === 0 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>⬆️</button>
-              <button type="button" class="btn-xs" data-blk-down="${idx}" title="Enviar depois" ${idx === draftBlocks.length - 1 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>⬇️</button>
+              <button type="button" class="btn-xs" data-blk-up="${idx}" title="Enviar antes" style="display:inline-flex;align-items:center;${idx === 0 ? 'opacity:0.35;cursor:default;' : ''}" ${idx === 0 ? 'disabled' : ''}>${ICONS.up}</button>
+              <button type="button" class="btn-xs" data-blk-down="${idx}" title="Enviar depois" style="display:inline-flex;align-items:center;${idx === draftBlocks.length - 1 ? 'opacity:0.35;cursor:default;' : ''}" ${idx === draftBlocks.length - 1 ? 'disabled' : ''}>${ICONS.down}</button>
               <button type="button" class="btn-xs" data-rm="${idx}" title="Remover bloco">Remover</button>
             ` : ''}
           </div>
@@ -531,7 +560,20 @@
 
         div.querySelectorAll('[data-var]').forEach(varBtn => {
           varBtn.addEventListener('click', () => {
-            insertVariableAtCursor(ta, idx, varBtn.dataset.var);
+            insertVariableAtCursor(ta, idx, varBtn.dataset.var, 'content');
+          });
+        });
+      }
+
+      const capInput = div.querySelector('[data-cap-idx]');
+      if (capInput) {
+        capInput.addEventListener('input', (e) => {
+          draftBlocks[idx].caption = e.target.value;
+        });
+
+        div.querySelectorAll('[data-cap-var]').forEach(varBtn => {
+          varBtn.addEventListener('click', () => {
+            insertVariableAtCursor(capInput, idx, varBtn.dataset.capVar, 'caption');
           });
         });
       }
@@ -577,11 +619,11 @@
       const item = document.createElement('div');
       item.className = 'list-item';
       item.innerHTML = `
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="width:12px;height:12px;border-radius:50%;background:${tag.color};display:inline-block;"></span>
+        <div style="display:flex;align-items:center;gap:9px;">
+          <span style="width:11px;height:11px;border-radius:50%;background:${tag.color};display:inline-block;flex-shrink:0;"></span>
           <span class="item-title">${tag.label}</span>
         </div>
-        <button class="btn-xs" data-del-tag="${tag.id}">🗑️</button>
+        <button class="btn-xs" data-del-tag="${tag.id}" title="Excluir etiqueta" style="display:inline-flex;align-items:center;">${ICONS.trash}</button>
       `;
       item.querySelector('[data-del-tag]').addEventListener('click', async () => {
         state.customTags = state.customTags.filter(t => t.id !== tag.id);
@@ -622,7 +664,11 @@
         return;
       }
 
-      draftBlocks.push(type === 'text' ? { type: 'text', content: '' } : { type, mediaId: null, fileName: '' });
+      draftBlocks.push(
+        type === 'text'
+          ? { type: 'text', content: '' }
+          : { type, mediaId: null, fileName: '', caption: '' }
+      );
       renderDraftBlocks();
     });
   });
@@ -646,7 +692,10 @@
 
     const validBlocks = draftBlocks
       .filter(b => (b.type === 'text' ? b.content?.trim() : b.mediaId))
-      .map(({ previewUrl, ...cleanBlock }) => cleanBlock);
+      .map(({ previewUrl, ...cleanBlock }) => ({
+        ...cleanBlock,
+        ...(cleanBlock.caption ? { caption: cleanBlock.caption.trim() } : {})
+      }));
 
     if (validBlocks.length === 0) {
       alert('Adicione pelo menos um bloco válido.');

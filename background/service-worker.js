@@ -5,6 +5,50 @@ const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias de tolerância offli
 const FALLBACK_ICON_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
+const DEFAULT_SHORTCUTS = [
+  {
+    id: 'sc_default_oi',
+    command: 'oi',
+    title: 'Saudação Inicial',
+    favorite: true,
+    delayMs: 2000,
+    blocks: [
+      {
+        type: 'text',
+        content: '{saudacao}, {nome}! Tudo bem? Como posso te ajudar hoje?'
+      }
+    ]
+  },
+  {
+    id: 'sc_default_pix',
+    command: 'pix',
+    title: 'Dados de Pagamento',
+    favorite: true,
+    delayMs: 2000,
+    blocks: [
+      {
+        type: 'text',
+        content:
+          'Segue nossa chave PIX para facilitar:\n\nChave: [Digite sua chave aqui]\nFavorecido: [Seu Nome / Empresa]\n\nAssim que fizer, me envia o comprovante por aqui!'
+      }
+    ]
+  },
+  {
+    id: 'sc_default_retorno',
+    command: 'retorno',
+    title: 'Cobrar Retorno',
+    favorite: true,
+    delayMs: 2000,
+    blocks: [
+      {
+        type: 'text',
+        content:
+          'Oi, {nome}! Passando só para saber se ficou alguma dúvida sobre o que conversamos. Fico à disposição!'
+      }
+    ]
+  }
+];
+
 function ensureAlarms() {
   chrome.alarms.get('check_followups', (existing) => {
     if (!existing) {
@@ -105,7 +149,14 @@ async function revalidateProLicense() {
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason === 'install') {
-    await chrome.storage.local.set({ installedAt: Date.now() });
+    const existing = await chrome.storage.local.get(['installedAt', 'shortcuts']);
+    const updates = { installedAt: existing.installedAt || Date.now() };
+
+    if (!Array.isArray(existing.shortcuts) || existing.shortcuts.length === 0) {
+      updates.shortcuts = DEFAULT_SHORTCUTS;
+    }
+
+    await chrome.storage.local.set(updates);
   }
   ensureAlarms();
   await checkDueFollowups();

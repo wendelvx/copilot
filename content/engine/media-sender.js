@@ -52,6 +52,16 @@ window.ZapCopilot.MediaSender = (() => {
     el.click();
   }
 
+  function findCaptionInput() {
+    return (
+      document.querySelector('div[contenteditable="true"][data-testid="media-caption-input-container"]') ||
+      document.querySelector('div[contenteditable="true"][aria-label="Adicione uma legenda"]') ||
+      document.querySelector('div[contenteditable="true"][aria-label="Add a caption"]') ||
+      Array.from(document.querySelectorAll('div[contenteditable="true"][role="textbox"]')).find(el => !el.closest('footer')) ||
+      null
+    );
+  }
+
   function findPreviewSendButton() {
     const byAriaPrefix = Array.from(
       document.querySelectorAll(
@@ -71,12 +81,45 @@ window.ZapCopilot.MediaSender = (() => {
     return null;
   }
 
+  async function fillPreviewCaption(rawCaption) {
+    const finalCaption = Composer.resolveVariables(rawCaption);
+    if (!finalCaption) return;
+
+    let captionInput = null;
+    for (let i = 0; i < 10; i++) {
+      captionInput = findCaptionInput();
+      if (captionInput) break;
+      await sleep(100);
+    }
+
+    if (!captionInput) return;
+
+    captionInput.focus();
+    await sleep(50);
+
+    const dt = new DataTransfer();
+    dt.setData('text/plain', finalCaption);
+    captionInput.dispatchEvent(new ClipboardEvent('paste', {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dt
+    }));
+
+    // Fallback caso o Lexical Editor do modal bloqueie o paste sintético
+    await sleep(80);
+    if (!captionInput.textContent || captionInput.textContent.trim() === '') {
+      document.execCommand('insertText', false, finalCaption);
+    }
+
+    await sleep(120);
+  }
+
   async function confirmPreviewSend(btn) {
     simulateRealClick(btn);
     await sleep(250);
 
     if (findPreviewSendButton()) {
-      const captionInput = document.querySelector('div[data-testid="media-caption-input-container"]');
+      const captionInput = findCaptionInput();
       if (captionInput) {
         captionInput.focus();
         captionInput.dispatchEvent(new KeyboardEvent('keydown', {
@@ -133,9 +176,6 @@ window.ZapCopilot.MediaSender = (() => {
     return true;
   }
 
-  /**
-   * Envia o arrayBuffer para a ponte MAIN world (ptt-bridge.js) decodificar e preparar o stream virtual.
-   */
   function preparePttInMainWorld(arrayBuffer) {
     return new Promise((resolve, reject) => {
       const requestId = 'ptt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -192,9 +232,6 @@ window.ZapCopilot.MediaSender = (() => {
     );
   }
 
-  /**
-   * Grava e envia um áudio como nota de voz nativa (PTT) usando o botão de microfone do WhatsApp Web.
-   */
   async function sendAudioAsPtt(blob, fileName) {
     const micBtn = findVoiceRecordButton();
     if (!micBtn) {
@@ -205,10 +242,8 @@ window.ZapCopilot.MediaSender = (() => {
     const durationSec = await preparePttInMainWorld(arrayBuffer);
 
     try {
-      // Inicia a gravação no WhatsApp Web
       simulateRealClick(micBtn);
 
-      // Aguarda o botão de enviar da gravação aparecer no footer (confirma que getUserMedia conectou)
       let voiceSendBtn = null;
       for (let i = 0; i < 25; i++) {
         await sleep(150);
@@ -220,7 +255,6 @@ window.ZapCopilot.MediaSender = (() => {
         throw new Error(`Gravador de voz não iniciou para "${fileName}".`);
       }
 
-      // Aguarda a duração do áudio (com margem de 350ms para o encoder Opus finalizar os últimos frames)
       const waitMs = Math.min(Math.max(Math.ceil(durationSec * 1000) + 350, 1000), 180000);
       await sleep(waitMs);
 
@@ -244,13 +278,11 @@ window.ZapCopilot.MediaSender = (() => {
 
     const fileName = record.name || block.fileName || 'arquivo';
 
-    // Fluxo dedicado para Nota de Voz (PTT gravada na hora)
     if (block.type === 'audio') {
       await sendAudioAsPtt(record.blob, fileName);
       return true;
     }
 
-    // Fluxo para Imagem e PDF/Documentos
     const mimeType = inferMimeType(fileName, record.mimeType || record.blob.type);
     const file = new File([record.blob], fileName, { type: mimeType });
 
@@ -267,24 +299,11 @@ window.ZapCopilot.MediaSender = (() => {
       throw new Error(`Tela de pré-visualização não abriu para "${fileName}".`);
     }
 
-    if (block.caption) {
-      const captionInput =
-        document.querySelector('div[data-testid="media-caption-input-container"]') ||
-        Array.from(document.querySelectorAll('div[contenteditable="true"][role="textbox"]')).find(el => !el.closest('footer'));
-      if (captionInput) {
-        captionInput.focus();
-        const dt = new DataTransfer();
-        dt.setData('text/plain', Composer.resolveVariables(block.caption));
-        captionInput.dispatchEvent(new ClipboardEvent('paste', {
-          bubbles: true,
-          cancelable: true,
-          clipboardData: dt
-        }));
-        await sleep(120);
-      }
+    if (block.caption && block.caption.trim()) {
+      await fillPreviewCaption(block.caption);
     }
 
-    await sleep(200);
+    await sleep(150);
     await confirmPreviewSend(previewSendBtn);
     return true;
   }

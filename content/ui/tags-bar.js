@@ -10,21 +10,55 @@ window.ZapCopilot.TagsBarUI = (() => {
   let overflowOpen = false;
   let isMounting = false;
 
+  const ICONS = {
+    clock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    close: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+  };
+
   const STYLES = `
     :host {
+      --bg-surface: #ffffff;
+      --bg-canvas: #faf9f6;
+      --bg-subtle: #f3f2ee;
+      --bg-hover: #eae8e1;
+      --primary: #0f766e;
+      --primary-soft: #e6f4f1;
+      --primary-border: rgba(15, 118, 110, 0.25);
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border-subtle: rgba(30, 41, 59, 0.08);
+      --shadow-pop: 0 10px 28px -4px rgba(15, 23, 42, 0.14);
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
       display: block;
       width: 100%;
       position: relative;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
+
+    :host([data-theme="dark"]) {
+      --bg-surface: #111b21;
+      --bg-canvas: #202c33;
+      --bg-subtle: #202c33;
+      --bg-hover: #2a3942;
+      --primary: #2dd4bf;
+      --primary-soft: rgba(45, 212, 191, 0.14);
+      --primary-border: rgba(45, 212, 191, 0.3);
+      --text-main: #e9edef;
+      --text-muted: #8696a0;
+      --border-subtle: rgba(134, 150, 160, 0.16);
+      --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+
     .zc-tags-row {
       display: flex;
       align-items: center;
       gap: 6px;
       padding: 4px 16px 8px;
-      background: #ffffff;
+      background: var(--bg-surface);
       flex-wrap: nowrap;
     }
+
     .zc-filter-pill {
       display: inline-flex;
       align-items: center;
@@ -32,80 +66,107 @@ window.ZapCopilot.TagsBarUI = (() => {
       height: 28px;
       padding: 0 11px;
       border-radius: 999px;
-      border: 1px solid #e9edef;
-      background: #f0f2f5;
-      color: #54656f;
-      font-size: 12.5px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+      font-size: 12px;
       font-weight: 500;
       white-space: nowrap;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: all 0.16s var(--ease);
       flex-shrink: 0;
     }
+
     .zc-filter-pill:hover {
-      background: #e9edef;
-      color: #111b21;
+      background: var(--bg-hover);
+      color: var(--text-main);
     }
+
+    .zc-filter-pill:active {
+      transform: scale(0.96);
+    }
+
     .zc-filter-pill.active {
-      background: #d9fdd3;
-      border-color: #25d366;
-      color: #008069;
+      background: var(--primary-soft);
+      border-color: var(--primary-border);
+      color: var(--primary);
       font-weight: 600;
     }
+
     .zc-more-pill {
       font-weight: 600;
       padding: 0 10px;
     }
+
     .zc-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
     }
+
     .zc-overflow-menu {
       display: none;
       position: absolute;
       top: calc(100% - 2px);
       right: 16px;
-      min-width: 190px;
-      max-width: 240px;
+      min-width: 195px;
+      max-width: 245px;
       max-height: 260px;
       overflow-y: auto;
-      background: #ffffff;
-      border: 1px solid #e9edef;
-      border-radius: 12px;
-      box-shadow: 0 8px 24px rgba(11, 20, 26, 0.16);
+      background: var(--bg-canvas);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      box-shadow: var(--shadow-pop);
       padding: 6px;
       z-index: 950;
+      animation: fadeDrop 0.16s var(--ease);
     }
+
     .zc-overflow-menu.open {
       display: flex;
       flex-direction: column;
       gap: 2px;
     }
+
+    @keyframes fadeDrop {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     .zc-overflow-item {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
       padding: 8px 10px;
-      border-radius: 8px;
+      border-radius: 10px;
       border: none;
       background: transparent;
-      color: #111b21;
-      font-size: 13px;
+      color: var(--text-main);
+      font-size: 12.5px;
       cursor: pointer;
       text-align: left;
       width: 100%;
+      transition: background 0.14s;
     }
+
     .zc-overflow-item:hover {
-      background: #f0f2f5;
+      background: var(--bg-hover);
     }
+
     .zc-overflow-item.active {
-      background: #d9fdd3;
-      color: #008069;
+      background: var(--primary-soft);
+      color: var(--primary);
       font-weight: 600;
     }
+
     .zc-results-drawer {
       display: none;
       position: absolute;
@@ -114,16 +175,18 @@ window.ZapCopilot.TagsBarUI = (() => {
       right: 0;
       max-height: 360px;
       overflow-y: auto;
-      background: #ffffff;
-      border-top: 1px solid #e9edef;
-      border-bottom: 1px solid #d1d7db;
-      box-shadow: 0 10px 24px rgba(11, 20, 26, 0.16);
+      background: var(--bg-canvas);
+      border-top: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-pop);
       z-index: 900;
-      padding: 8px;
+      padding: 10px;
     }
+
     .zc-results-drawer.open {
       display: block;
     }
+
     .zc-drawer-head {
       display: flex;
       justify-content: space-between;
@@ -131,30 +194,58 @@ window.ZapCopilot.TagsBarUI = (() => {
       padding: 4px 8px 8px;
       font-size: 12px;
       font-weight: 700;
-      color: #008069;
-      border-bottom: 1px solid #f0f2f5;
+      color: var(--primary);
+      border-bottom: 1px solid var(--border-subtle);
     }
+
     .zc-close-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       background: none;
       border: none;
-      color: #54656f;
+      color: var(--text-muted);
       cursor: pointer;
       font-size: 12px;
+      padding: 3px 6px;
+      border-radius: 6px;
+      transition: background 0.14s, color 0.14s;
     }
+
+    .zc-close-filter:hover {
+      background: var(--bg-hover);
+      color: var(--text-main);
+    }
+
     .zc-chat-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 10px 10px;
-      border-radius: 8px;
+      border-radius: 10px;
       cursor: pointer;
-      font-size: 13.5px;
-      color: #111b21;
+      font-size: 13px;
+      color: var(--text-main);
+      transition: background 0.14s;
     }
+
     .zc-chat-row:hover {
-      background: #f0f2f5;
+      background: var(--bg-hover);
     }
   `;
+
+  function isDarkMode() {
+    return document.body?.classList.contains('dark') ||
+      document.documentElement?.getAttribute('data-theme') === 'dark';
+  }
+
+  function syncTheme() {
+    if (!hostEl) return;
+    const theme = isDarkMode() ? 'dark' : 'light';
+    if (hostEl.getAttribute('data-theme') !== theme) {
+      hostEl.setAttribute('data-theme', theme);
+    }
+  }
 
   async function render() {
     if (!shadowRoot) return;
@@ -168,12 +259,12 @@ window.ZapCopilot.TagsBarUI = (() => {
     rowEl.innerHTML = '';
     overflowEl.innerHTML = '';
 
-    // 1. Pill "Aguardando Retorno"
+    // 1. Pill "Retorno"
     const pendingCount = state.followups.filter(f => !f.completed).length;
     const fuPill = document.createElement('button');
     fuPill.type = 'button';
     fuPill.className = `zc-filter-pill ${activeFilter === 'followup' ? 'active' : ''}`;
-    fuPill.innerHTML = `<span>🕒 Retorno</span>${pendingCount > 0 ? `<b>(${pendingCount})</b>` : ''}`;
+    fuPill.innerHTML = `${ICONS.clock}<span>Retorno</span>${pendingCount > 0 ? `<b>(${pendingCount})</b>` : ''}`;
     fuPill.addEventListener('click', () => {
       overflowOpen = false;
       activeFilter = activeFilter === 'followup' ? null : 'followup';
@@ -226,7 +317,7 @@ window.ZapCopilot.TagsBarUI = (() => {
             <span class="zc-dot" style="background:${tag.color}"></span>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${tag.label}</span>
           </span>
-          ${count > 0 ? `<b style="font-size:11.5px;color:#54656f;">(${count})</b>` : ''}
+          ${count > 0 ? `<b style="font-size:11px;color:var(--text-muted);">(${count})</b>` : ''}
         `;
         item.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -266,7 +357,7 @@ window.ZapCopilot.TagsBarUI = (() => {
     }
 
     if (items.length === 0) {
-      listEl.innerHTML = `<div style="padding:14px;text-align:center;font-size:12.5px;color:#667781;">Nenhuma conversa marcada neste filtro ainda.</div>`;
+      listEl.innerHTML = `<div style="padding:14px;text-align:center;font-size:12px;color:var(--text-muted);">Nenhuma conversa marcada neste filtro ainda.</div>`;
       return;
     }
 
@@ -276,9 +367,9 @@ window.ZapCopilot.TagsBarUI = (() => {
       div.innerHTML = `
         <div>
           <div style="font-weight:600;">${item.contactKey}</div>
-          <div style="font-size:11.5px;color:#667781;">${item.sub}</div>
+          <div style="font-size:11.5px;color:var(--text-muted);">${item.sub}</div>
         </div>
-        <span style="font-size:12px;color:#008069;">Abrir →</span>
+        <span style="font-size:12px;font-weight:600;color:var(--primary);">Abrir →</span>
       `;
       div.addEventListener('click', async () => {
         activeFilter = null;
@@ -296,6 +387,7 @@ window.ZapCopilot.TagsBarUI = (() => {
     if (!filtersRow || !filtersRow.parentElement) return;
 
     if (filtersRow.parentElement.querySelector('#zap-copilot-tagsbar-host')) {
+      syncTheme();
       return;
     }
 
@@ -312,7 +404,7 @@ window.ZapCopilot.TagsBarUI = (() => {
         <div class="zc-results-drawer">
           <div class="zc-drawer-head">
             <span id="zc-drawer-title">Filtro</span>
-            <button type="button" class="zc-close-filter">Fechar ✕</button>
+            <button type="button" class="zc-close-filter">${ICONS.close} Fechar</button>
           </div>
           <div id="zc-filtered-chats"></div>
         </div>
@@ -325,6 +417,7 @@ window.ZapCopilot.TagsBarUI = (() => {
       });
 
       filtersRow.insertAdjacentElement('afterend', hostEl);
+      syncTheme();
       await render();
     } finally {
       isMounting = false;
@@ -346,6 +439,11 @@ window.ZapCopilot.TagsBarUI = (() => {
   });
 
   function init() {
+    const themeObserver = new MutationObserver(() => syncTheme());
+    if (document.body) {
+      themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+
     DomObserver.on('appReady', () => mount());
     DomObserver.on('domUpdated', () => mount());
   }

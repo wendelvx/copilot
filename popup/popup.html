@@ -8,7 +8,11 @@
 <body>
   <header class="header">
     <div class="brand">
-      <span class="logo">⚡</span>
+      <span class="logo" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+      </span>
       <div>
         <h1>Copiloto WhatsApp</h1>
         <span id="plan-badge" class="badge free">PLANO GRATUITO</span>
@@ -59,12 +63,21 @@
       </div>
 
       <div class="blocks-header">
-        <span>Blocos da Sequência (máx. 3)</span>
+        <span>Sequência (máx. 3)</span>
         <div class="block-add-btns">
           <button type="button" class="btn-xs" data-add-block="text">+ Texto</button>
-          <button type="button" class="btn-xs pro-lock" data-add-block="image">🖼️ Imagem</button>
-          <button type="button" class="btn-xs pro-lock" data-add-block="document">📄 PDF</button>
-          <button type="button" class="btn-xs pro-lock" data-add-block="audio">🎙️ Áudio</button>
+          <button type="button" class="btn-xs pro-lock" data-add-block="image" style="display:inline-flex;align-items:center;gap:4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Imagem
+          </button>
+          <button type="button" class="btn-xs pro-lock" data-add-block="document" style="display:inline-flex;align-items:center;gap:4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            PDF
+          </button>
+          <button type="button" class="btn-xs pro-lock" data-add-block="audio" style="display:inline-flex;align-items:center;gap:4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            Áudio
+          </button>
         </div>
       </div>
 
@@ -87,7 +100,7 @@
 
     <div class="card">
       <div class="row-tag">
-        <input type="color" id="tag-color" value="#008069" />
+        <input type="color" id="tag-color" value="#0f766e" title="Cor da etiqueta" />
         <input type="text" id="tag-label" placeholder="Nome da etiqueta (ex: Aguardando PIX)" />
         <button type="button" id="btn-add-tag" class="btn-primary">Adicionar</button>
       </div>
@@ -109,9 +122,15 @@
     <div class="card">
       <h3>Backup e Restauração (.json) <span class="pro-tag">PRO</span></h3>
       <p class="muted">Exporte seus atalhos e etiquetas para transferir para outro computador ou manter uma cópia de segurança.</p>
-      <div class="row-2" style="margin-top:10px;">
-        <button type="button" id="btn-export-json" class="btn-secondary">⬇️ Exportar Backup</button>
-        <button type="button" id="btn-import-json" class="btn-secondary">⬆️ Importar Backup</button>
+      <div class="row-2" style="margin-top:12px;">
+        <button type="button" id="btn-export-json" class="btn-secondary" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Exportar Backup
+        </button>
+        <button type="button" id="btn-import-json" class="btn-secondary" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Importar Backup
+        </button>
         <input type="file" id="import-file-input" accept=".json" hidden />
       </div>
     </div>
@@ -122,9 +141,18 @@
     <div class="pro-hero">
       <h2>Desbloqueie o Copiloto PRO</h2>
       <ul>
-        <li>✅ Atalhos rápidos e lembretes de follow-up <b>ilimitados</b></li>
-        <li>✅ Envio de <b>áudio como gravado na hora</b>, PDFs e imagens em sequência</li>
-        <li>✅ Etiquetas personalizadas ilimitadas e backup em <b>.json</b></li>
+        <li style="display:flex;align-items:center;gap:7px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6ee7b7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Atalhos rápidos e lembretes de follow-up <b>ilimitados</b></span>
+        </li>
+        <li style="display:flex;align-items:center;gap:7px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6ee7b7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Envio de <b>áudio gravado na hora</b>, PDFs e imagens em sequência</span>
+        </li>
+        <li style="display:flex;align-items:center;gap:7px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6ee7b7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Etiquetas personalizadas ilimitadas e backup em <b>.json</b></span>
+        </li>
       </ul>
       <div class="pricing-cards">
         <a href="https://www.asaas.com" target="_blank" class="price-box">
@@ -140,8 +168,8 @@
     </div>
 
     <div class="card">
-      <label>Já possui uma chave de licença?</label>
-      <div class="row-tag" style="margin-top:6px;">
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);">Já possui uma chave de licença?</label>
+      <div class="row-tag" style="margin-top:8px;">
         <input type="text" id="license-key-input" placeholder="Cole sua chave (ex: PRO-XXXX-XXXX)" />
         <button type="button" id="btn-activate-license" class="btn-primary">Ativar</button>
       </div>

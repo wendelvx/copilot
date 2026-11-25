@@ -3,9 +3,11 @@ window.ZapCopilot = window.ZapCopilot || {};
 window.ZapCopilot.QuickBarUI = (() => {
   const { Selectors, Storage: CopilotStorage, SequenceRunner, DomObserver } = window.ZapCopilot;
 
+  const MAX_VISIBLE_SHORTCUTS = 3;
   let hostEl = null;
   let shadowRoot = null;
   let slashMenuOpen = false;
+  let moreMenuOpen = false;
   let slashFilter = '';
   let selectedIndex = 0;
   let filteredShortcuts = [];
@@ -13,13 +15,51 @@ window.ZapCopilot.QuickBarUI = (() => {
   let showQuickBar = true;
   let isMounting = false;
 
+  const ICONS = {
+    zap: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+    layers: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+    mic: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
+    image: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+    doc: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+    sliders: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>`
+  };
+
   const STYLES = `
     :host {
+      --bar-bg: rgba(250, 249, 246, 0.94);
+      --bg-surface: #ffffff;
+      --bg-canvas: #faf9f6;
+      --bg-subtle: #f3f2ee;
+      --primary: #0f766e;
+      --primary-soft: #e6f4f1;
+      --primary-border: rgba(15, 118, 110, 0.25);
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border-subtle: rgba(30, 41, 59, 0.08);
+      --shadow-chip: 0 1px 3px rgba(30, 41, 59, 0.04);
+      --shadow-pop: 0 12px 32px -4px rgba(15, 23, 42, 0.16), 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
       display: block;
       width: 100%;
       position: relative;
       z-index: 100;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    :host([data-theme="dark"]) {
+      --bar-bg: rgba(32, 44, 51, 0.94);
+      --bg-surface: #202c33;
+      --bg-canvas: #111b21;
+      --bg-subtle: #2a3942;
+      --primary: #2dd4bf;
+      --primary-soft: rgba(45, 212, 191, 0.14);
+      --primary-border: rgba(45, 212, 191, 0.3);
+      --text-main: #e9edef;
+      --text-muted: #8696a0;
+      --border-subtle: rgba(134, 150, 160, 0.16);
+      --shadow-chip: 0 1px 3px rgba(0, 0, 0, 0.2);
+      --shadow-pop: 0 14px 36px rgba(0, 0, 0, 0.48);
     }
 
     /* Barra de Acesso Rápido Visual (RF02) */
@@ -28,10 +68,10 @@ window.ZapCopilot.QuickBarUI = (() => {
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 6px 14px;
-      background: rgba(240, 242, 245, 0.92);
-      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-      backdrop-filter: blur(6px);
+      padding: 7px 14px;
+      background: var(--bar-bg);
+      border-bottom: 1px solid var(--border-subtle);
+      backdrop-filter: blur(8px);
       box-sizing: border-box;
     }
 
@@ -42,50 +82,64 @@ window.ZapCopilot.QuickBarUI = (() => {
     .zc-chips-scroll {
       display: flex;
       align-items: center;
-      gap: 6px;
-      overflow-x: auto;
-      scrollbar-width: none;
+      gap: 7px;
       flex: 1;
-    }
-    .zc-chips-scroll::-webkit-scrollbar {
-      display: none;
+      min-width: 0;
+      padding: 1px 0;
     }
 
     .zc-chip {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      padding: 4px 10px;
+      gap: 6px;
+      height: 30px;
+      padding: 0 12px;
       border-radius: 999px;
-      border: 1px solid #d1d7db;
-      background: #ffffff;
-      color: #111b21;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      color: var(--text-main);
       font-size: 12.5px;
       font-weight: 500;
       white-space: nowrap;
       cursor: pointer;
-      transition: all 0.15s ease;
+      box-shadow: var(--shadow-chip);
+      transition: all 0.18s var(--ease);
       user-select: none;
+      flex-shrink: 0;
     }
 
-    .zc-chip:hover {
-      background: #e7fce3;
-      border-color: #25d366;
-      color: #008069;
+    .zc-chip:hover,
+    .zc-chip.active {
+      background: var(--primary-soft);
+      border-color: var(--primary-border);
+      color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    .zc-chip:active {
+      transform: scale(0.96);
+    }
+
+    .zc-more-chip {
+      font-weight: 700;
+      padding: 0 11px;
+      color: var(--primary);
+    }
+
+    .zc-chip-icon {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 700;
     }
 
     .zc-chip-cmd {
-      color: #008069;
+      color: var(--primary);
       font-weight: 700;
       font-size: 11.5px;
-    }
-
-    .zc-chip-badge {
-      font-size: 10px;
-      background: #f0f2f5;
-      color: #54656f;
-      padding: 1px 5px;
-      border-radius: 6px;
+      opacity: 0.9;
     }
 
     .zc-actions-right {
@@ -99,20 +153,23 @@ window.ZapCopilot.QuickBarUI = (() => {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      border: none;
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      border: 1px solid transparent;
       background: transparent;
-      color: #54656f;
+      color: var(--text-muted);
       cursor: pointer;
-      font-size: 14px;
-      transition: background 0.15s;
+      transition: all 0.16s var(--ease);
     }
 
     .zc-icon-btn:hover {
-      background: rgba(0, 0, 0, 0.08);
-      color: #111b21;
+      background: var(--bg-subtle);
+      color: var(--text-main);
+    }
+
+    .zc-icon-btn:active {
+      transform: scale(0.94);
     }
 
     /* Banner de progresso de sequência (RF04) */
@@ -120,57 +177,78 @@ window.ZapCopilot.QuickBarUI = (() => {
       display: none;
       align-items: center;
       gap: 8px;
-      background: #008069;
-      color: #fff;
+      background: #0f766e;
+      color: #ffffff;
       font-size: 12px;
-      padding: 3px 10px;
+      font-weight: 600;
+      padding: 4px 12px;
       border-radius: 999px;
+      box-shadow: 0 2px 8px rgba(15, 118, 110, 0.25);
     }
     .zc-progress.active {
       display: inline-flex;
     }
     .zc-cancel-btn {
-      background: rgba(255,255,255,0.2);
+      background: rgba(255, 255, 255, 0.2);
       border: none;
-      color: #fff;
+      color: #ffffff;
       border-radius: 999px;
-      padding: 1px 7px;
+      padding: 2px 8px;
       font-size: 11px;
+      font-weight: 600;
       cursor: pointer;
+      transition: background 0.15s;
     }
     .zc-cancel-btn:hover {
-      background: rgba(255,255,255,0.35);
+      background: rgba(255, 255, 255, 0.32);
     }
 
-    /* Menu Flutuante do Comando / (RF01) */
-    .zc-slash-popover {
+    /* Menus Flutuantes acima da barra (/comando e +N) */
+    .zc-popover {
       display: none;
       position: absolute;
       bottom: 100%;
       left: 16px;
-      margin-bottom: 6px;
-      width: 340px;
-      max-height: 240px;
+      margin-bottom: 8px;
+      width: 350px;
+      max-height: 260px;
       overflow-y: auto;
-      background: #ffffff;
-      border: 1px solid #d1d7db;
-      border-radius: 12px;
-      box-shadow: 0 6px 24px rgba(11, 20, 26, 0.16);
-      padding: 6px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      box-shadow: var(--shadow-pop);
+      padding: 8px;
       box-sizing: border-box;
+      animation: slashPopIn 0.18s var(--ease);
+      z-index: 120;
     }
 
-    .zc-slash-popover.open {
+    .zc-popover.open {
       display: block;
     }
 
-    .zc-slash-header {
+    .zc-more-popover {
+      width: 320px;
+    }
+
+    @keyframes slashPopIn {
+      from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .zc-popover-header {
       font-size: 11px;
       font-weight: 600;
-      color: #667781;
-      padding: 4px 8px 6px;
-      border-bottom: 1px solid #f0f2f5;
-      margin-bottom: 4px;
+      color: var(--text-muted);
+      padding: 4px 10px 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-bottom: 6px;
       display: flex;
       justify-content: space-between;
     }
@@ -178,20 +256,19 @@ window.ZapCopilot.QuickBarUI = (() => {
     .zc-slash-item {
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      padding: 7px 10px;
-      border-radius: 8px;
+      gap: 3px;
+      padding: 8px 11px;
+      border-radius: 10px;
       cursor: pointer;
-      transition: background 0.1s;
+      transition: background 0.14s var(--ease);
     }
 
-    .zc-slash-item:hover,
-    .zc-slash-item.selected {
-      background: #f0f2f5;
+    .zc-slash-item:hover {
+      background: var(--bg-subtle);
     }
 
     .zc-slash-item.selected {
-      background: #e7fce3;
+      background: var(--primary-soft);
     }
 
     .zc-slash-top {
@@ -202,26 +279,42 @@ window.ZapCopilot.QuickBarUI = (() => {
     }
 
     .zc-slash-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       font-size: 13px;
       font-weight: 600;
-      color: #111b21;
+      color: var(--text-main);
     }
 
     .zc-slash-preview {
       font-size: 12px;
-      color: #667781;
+      color: var(--text-muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     .zc-empty {
-      padding: 12px;
+      padding: 14px;
       text-align: center;
       font-size: 12.5px;
-      color: #667781;
+      color: var(--text-muted);
     }
   `;
+
+  function isDarkMode() {
+    return document.body?.classList.contains('dark') ||
+      document.documentElement?.getAttribute('data-theme') === 'dark';
+  }
+
+  function syncTheme() {
+    if (!hostEl) return;
+    const theme = isDarkMode() ? 'dark' : 'light';
+    if (hostEl.getAttribute('data-theme') !== theme) {
+      hostEl.setAttribute('data-theme', theme);
+    }
+  }
 
   async function loadData() {
     const state = await CopilotStorage.getAll();
@@ -229,14 +322,18 @@ window.ZapCopilot.QuickBarUI = (() => {
     showQuickBar = state.settings?.showQuickBar !== false;
   }
 
-  function getBlockIcon(shortcut) {
-    if (!shortcut.blocks || shortcut.blocks.length === 0) return '⚡';
-    if (shortcut.blocks.length > 1) return `📑 ${shortcut.blocks.length}x`;
+  function getBlockIconHtml(shortcut) {
+    if (!shortcut.blocks || shortcut.blocks.length === 0) {
+      return `<span class="zc-chip-icon">${ICONS.zap}</span>`;
+    }
+    if (shortcut.blocks.length > 1) {
+      return `<span class="zc-chip-icon">${ICONS.layers}<span>${shortcut.blocks.length}x</span></span>`;
+    }
     const type = shortcut.blocks[0].type;
-    if (type === 'audio') return '🎙️';
-    if (type === 'image') return '🖼️';
-    if (type === 'document') return '📄';
-    return '⚡';
+    if (type === 'audio') return `<span class="zc-chip-icon">${ICONS.mic}</span>`;
+    if (type === 'image') return `<span class="zc-chip-icon">${ICONS.image}</span>`;
+    if (type === 'document') return `<span class="zc-chip-icon">${ICONS.doc}</span>`;
+    return `<span class="zc-chip-icon">${ICONS.zap}</span>`;
   }
 
   function getShortcutPreview(shortcut) {
@@ -244,6 +341,63 @@ window.ZapCopilot.QuickBarUI = (() => {
     if (!first) return '';
     if (first.type === 'text') return first.content;
     return `[${first.type.toUpperCase()}] ${first.fileName || 'Mídia anexada'}`;
+  }
+
+  function getQuickList() {
+    const favorites = allShortcuts.filter(s => s.favorite);
+    return favorites.length > 0 ? favorites : allShortcuts;
+  }
+
+  function renderMoreMenu(hiddenShortcuts, anchorBtn = null) {
+    if (!shadowRoot) return;
+    const popover = shadowRoot.querySelector('.zc-more-popover');
+    const listEl = shadowRoot.querySelector('.zc-more-list');
+    if (!popover || !listEl) return;
+
+    if (!moreMenuOpen || hiddenShortcuts.length === 0) {
+      moreMenuOpen = false;
+      popover.classList.remove('open');
+      return;
+    }
+
+    popover.classList.add('open');
+    listEl.innerHTML = '';
+
+    hiddenShortcuts.forEach(sc => {
+      const item = document.createElement('div');
+      item.className = 'zc-slash-item';
+      item.title = 'Clique para enviar agora • Shift+Clique para apenas colar no texto';
+      item.innerHTML = `
+        <div class="zc-slash-top">
+          <span class="zc-slash-title">${getBlockIconHtml(sc)} <span>${escapeHtml(sc.title)}</span></span>
+          <span class="zc-chip-cmd">/${escapeHtml(sc.command)}</span>
+        </div>
+        <div class="zc-slash-preview">${escapeHtml(getShortcutPreview(sc))}</div>
+      `;
+      item.addEventListener('click', (e) => {
+        closeMoreMenu();
+        SequenceRunner.run(sc, { insertOnly: e.shiftKey });
+      });
+      listEl.appendChild(item);
+    });
+
+    if (anchorBtn && hostEl) {
+      const hostRect = hostEl.getBoundingClientRect();
+      const btnRect = anchorBtn.getBoundingClientRect();
+      const popWidth = popover.offsetWidth || 320;
+      const desiredLeft = btnRect.left - hostRect.left;
+      const maxLeft = Math.max(12, hostRect.width - popWidth - 14);
+      popover.style.left = `${Math.min(Math.max(12, desiredLeft), maxLeft)}px`;
+    }
+  }
+
+  function closeMoreMenu() {
+    if (!moreMenuOpen) return;
+    moreMenuOpen = false;
+    if (shadowRoot) {
+      shadowRoot.querySelector('.zc-more-popover')?.classList.remove('open');
+      shadowRoot.querySelector('.zc-more-chip')?.classList.remove('active');
+    }
   }
 
   function renderQuickChips() {
@@ -254,31 +408,55 @@ window.ZapCopilot.QuickBarUI = (() => {
 
     bar.classList.toggle('hidden', !showQuickBar);
 
-    const favorites = allShortcuts.filter(s => s.favorite);
-    const listToRender = favorites.length > 0 ? favorites : allShortcuts;
+    const listToRender = getQuickList();
+    const visibleShortcuts = listToRender.slice(0, MAX_VISIBLE_SHORTCUTS);
+    const hiddenShortcuts = listToRender.slice(MAX_VISIBLE_SHORTCUTS);
 
     container.innerHTML = '';
 
     if (listToRender.length === 0) {
-      container.innerHTML = `<span style="font-size:12px;color:#667781;">Nenhum atalho cadastrado. Digite <b>/</b> ou clique na engrenagem.</span>`;
+      closeMoreMenu();
+      container.innerHTML = `<span style="font-size:12px;color:var(--text-muted);">Nenhum atalho cadastrado. Digite <b>/</b> ou clique em ajustes ao lado.</span>`;
       return;
     }
 
-    listToRender.forEach(sc => {
+    visibleShortcuts.forEach(sc => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'zc-chip';
       btn.title = `Clique para enviar agora • Shift+Clique para apenas colar no texto`;
       btn.innerHTML = `
-        <span>${getBlockIcon(sc)}</span>
+        ${getBlockIconHtml(sc)}
         <span>${escapeHtml(sc.title)}</span>
         <span class="zc-chip-cmd">/${escapeHtml(sc.command)}</span>
       `;
       btn.addEventListener('click', (e) => {
+        closeMoreMenu();
         SequenceRunner.run(sc, { insertOnly: e.shiftKey });
       });
       container.appendChild(btn);
     });
+
+    if (hiddenShortcuts.length > 0) {
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = `zc-chip zc-more-chip ${moreMenuOpen ? 'active' : ''}`;
+      moreBtn.title = `Ver mais ${hiddenShortcuts.length} atalho(s)`;
+      moreBtn.textContent = `+${hiddenShortcuts.length}`;
+      moreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeSlashMenu();
+        moreMenuOpen = !moreMenuOpen;
+        moreBtn.classList.toggle('active', moreMenuOpen);
+        renderMoreMenu(hiddenShortcuts, moreBtn);
+      });
+      container.appendChild(moreBtn);
+      if (moreMenuOpen) {
+        renderMoreMenu(hiddenShortcuts, moreBtn);
+      }
+    } else {
+      closeMoreMenu();
+    }
   }
 
   function renderSlashMenu() {
@@ -316,7 +494,7 @@ window.ZapCopilot.QuickBarUI = (() => {
       item.className = `zc-slash-item ${idx === selectedIndex ? 'selected' : ''}`;
       item.innerHTML = `
         <div class="zc-slash-top">
-          <span class="zc-slash-title">${getBlockIcon(sc)} ${escapeHtml(sc.title)}</span>
+          <span class="zc-slash-title">${getBlockIconHtml(sc)} <span>${escapeHtml(sc.title)}</span></span>
           <span class="zc-chip-cmd">/${escapeHtml(sc.command)}</span>
         </div>
         <div class="zc-slash-preview">${escapeHtml(getShortcutPreview(sc))}</div>
@@ -372,6 +550,7 @@ window.ZapCopilot.QuickBarUI = (() => {
     const syncSlashState = () => {
       const rawText = (input.textContent || '').replace(/\u200B/g, '').trim();
       if (rawText.startsWith('/') && !rawText.includes(' ') && rawText.length > 0) {
+        closeMoreMenu();
         slashMenuOpen = true;
         slashFilter = rawText.slice(1);
         selectedIndex = 0;
@@ -395,6 +574,12 @@ window.ZapCopilot.QuickBarUI = (() => {
       document.body.dataset.zcGlobalKeyBound = 'true';
 
       document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && moreMenuOpen) {
+          e.preventDefault();
+          closeMoreMenu();
+          return;
+        }
+
         if (!slashMenuOpen) return;
         const activeInput = Selectors.getMessageInput();
         if (!activeInput || !activeInput.contains(document.activeElement)) return;
@@ -436,6 +621,7 @@ window.ZapCopilot.QuickBarUI = (() => {
 
     const existingHost = footer.querySelector('#zap-copilot-quickbar-host');
     if (existingHost) {
+      syncTheme();
       attachInputListeners();
       return;
     }
@@ -457,12 +643,19 @@ window.ZapCopilot.QuickBarUI = (() => {
 
       shadowRoot.innerHTML = `
         <style>${STYLES}</style>
-        <div class="zc-slash-popover">
-          <div class="zc-slash-header">
+        <div class="zc-popover zc-slash-popover">
+          <div class="zc-popover-header">
             <span>Atalhos Rápidos</span>
             <span>Enter: enviar • Shift+Enter: colar</span>
           </div>
           <div class="zc-slash-list"></div>
+        </div>
+        <div class="zc-popover zc-more-popover">
+          <div class="zc-popover-header">
+            <span>Mais Atalhos</span>
+            <span>Clique: enviar • Shift: colar</span>
+          </div>
+          <div class="zc-more-list"></div>
         </div>
         <div class="zc-bar">
           <div class="zc-chips-scroll"></div>
@@ -471,7 +664,7 @@ window.ZapCopilot.QuickBarUI = (() => {
               <span class="zc-progress-text">Enviando 1/3...</span>
               <button type="button" class="zc-cancel-btn">Cancelar</button>
             </div>
-            <button type="button" class="zc-icon-btn" id="zc-open-settings" title="Gerenciar Atalhos">⚙️</button>
+            <button type="button" class="zc-icon-btn" id="zc-open-settings" title="Gerenciar Atalhos" aria-label="Gerenciar Atalhos">${ICONS.sliders}</button>
           </div>
         </div>
       `;
@@ -481,10 +674,12 @@ window.ZapCopilot.QuickBarUI = (() => {
       });
 
       shadowRoot.querySelector('#zc-open-settings').addEventListener('click', () => {
+        closeMoreMenu();
         chrome.runtime.sendMessage({ type: 'OPEN_POPUP' });
       });
 
       footer.prepend(hostEl);
+      syncTheme();
 
       renderQuickChips();
       attachInputListeners();
@@ -523,9 +718,21 @@ window.ZapCopilot.QuickBarUI = (() => {
     }
   });
 
+  document.addEventListener('click', (e) => {
+    if (moreMenuOpen && hostEl && !hostEl.contains(e.target)) {
+      closeMoreMenu();
+    }
+  });
+
   function init() {
+    const themeObserver = new MutationObserver(() => syncTheme());
+    if (document.body) {
+      themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+
     DomObserver.on('chatChanged', () => {
       closeSlashMenu();
+      closeMoreMenu();
       mount();
     });
     DomObserver.on('domUpdated', () => {
