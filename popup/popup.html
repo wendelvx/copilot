@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Copiloto WhatsApp Web</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <span class="logo">⚡</span>
+      <div>
+        <h1>Copiloto WhatsApp</h1>
+        <span id="plan-badge" class="badge free">PLANO GRATUITO</span>
+      </div>
+    </div>
+    <button id="btn-upgrade-top" class="btn-pro-cta">Virar PRO</button>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="shortcuts">Atalhos</button>
+    <button class="tab" data-tab="tags">Etiquetas</button>
+    <button class="tab" data-tab="backup">Backup & Config</button>
+    <button class="tab" data-tab="pro">Ativar PRO</button>
+  </nav>
+
+  <!-- ABA 1: ATALHOS -->
+  <main id="tab-shortcuts" class="tab-panel active">
+    <div class="panel-top">
+      <span id="shortcuts-counter" class="muted">0/3 atalhos usados</span>
+      <button id="btn-new-shortcut" class="btn-primary">+ Novo Atalho</button>
+    </div>
+
+    <!-- Formulário de Criação/Edição -->
+    <div id="shortcut-form-card" class="card hidden">
+      <h3 id="form-title">Novo Atalho</h3>
+      <input type="hidden" id="sc-id" />
+
+      <div class="row-2">
+        <div class="field">
+          <label>Comando (/palavra)</label>
+          <input type="text" id="sc-command" placeholder="ex: orcamento" />
+        </div>
+        <div class="field">
+          <label>Título no Botão</label>
+          <input type="text" id="sc-title" placeholder="ex: Tabela de Preços" />
+        </div>
+      </div>
+
+      <div class="row-2">
+        <label class="checkbox-label">
+          <input type="checkbox" id="sc-favorite" checked />
+          Exibir na barra rápida
+        </label>
+        <div class="field inline">
+          <label>Intervalo (seg):</label>
+          <input type="number" id="sc-delay" min="1.5" max="15" step="0.5" value="2" />
+        </div>
+      </div>
+
+      <div class="blocks-header">
+        <span>Blocos da Sequência (máx. 3)</span>
+        <div class="block-add-btns">
+          <button type="button" class="btn-xs" data-add-block="text">+ Texto</button>
+          <button type="button" class="btn-xs pro-lock" data-add-block="image">🖼️ Imagem</button>
+          <button type="button" class="btn-xs pro-lock" data-add-block="document">📄 PDF</button>
+          <button type="button" class="btn-xs pro-lock" data-add-block="audio">🎙️ Áudio</button>
+        </div>
+      </div>
+
+      <div id="blocks-container"></div>
+
+      <div class="form-actions">
+        <button type="button" id="btn-cancel-sc" class="btn-ghost">Cancelar</button>
+        <button type="button" id="btn-save-sc" class="btn-primary">Salvar Atalho</button>
+      </div>
+    </div>
+
+    <div id="shortcuts-list" class="list"></div>
+  </main>
+
+  <!-- ABA 2: ETIQUETAS -->
+  <main id="tab-tags" class="tab-panel">
+    <div class="panel-top">
+      <span id="tags-counter" class="muted">0/2 etiquetas criadas</span>
+    </div>
+
+    <div class="card">
+      <div class="row-tag">
+        <input type="color" id="tag-color" value="#008069" />
+        <input type="text" id="tag-label" placeholder="Nome da etiqueta (ex: Aguardando PIX)" />
+        <button type="button" id="btn-add-tag" class="btn-primary">Adicionar</button>
+      </div>
+    </div>
+
+    <div id="tags-list" class="list"></div>
+  </main>
+
+  <!-- ABA 3: BACKUP & CONFIG -->
+  <main id="tab-backup" class="tab-panel">
+    <div class="card">
+      <h3>Preferências de Interface</h3>
+      <label class="checkbox-label">
+        <input type="checkbox" id="cfg-show-quickbar" checked />
+        Mostrar barra horizontal de atalhos acima da caixa de texto
+      </label>
+    </div>
+
+    <div class="card">
+      <h3>Backup e Restauração (.json) <span class="pro-tag">PRO</span></h3>
+      <p class="muted">Exporte seus atalhos e etiquetas para transferir para outro computador ou manter uma cópia de segurança.</p>
+      <div class="row-2" style="margin-top:10px;">
+        <button type="button" id="btn-export-json" class="btn-secondary">⬇️ Exportar Backup</button>
+        <button type="button" id="btn-import-json" class="btn-secondary">⬆️ Importar Backup</button>
+        <input type="file" id="import-file-input" accept=".json" hidden />
+      </div>
+    </div>
+  </main>
+
+  <!-- ABA 4: PLANO PRO -->
+  <main id="tab-pro" class="tab-panel">
+    <div class="pro-hero">
+      <h2>Desbloqueie o Copiloto PRO</h2>
+      <ul>
+        <li>✅ Atalhos rápidos e lembretes de follow-up <b>ilimitados</b></li>
+        <li>✅ Envio de <b>áudio como gravado na hora</b>, PDFs e imagens em sequência</li>
+        <li>✅ Etiquetas personalizadas ilimitadas e backup em <b>.json</b></li>
+      </ul>
+      <div class="pricing-cards">
+        <a href="https://www.asaas.com" target="_blank" class="price-box">
+          <strong>R$ 20,00</strong>
+          <span>por mês</span>
+        </a>
+        <a href="https://www.asaas.com" target="_blank" class="price-box highlight">
+          <span class="save-pill">ECONOMIZE 38%</span>
+          <strong>R$ 147,00</strong>
+          <span>por ano</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>Já possui uma chave de licença?</label>
+      <div class="row-tag" style="margin-top:6px;">
+        <input type="text" id="license-key-input" placeholder="Cole sua chave (ex: PRO-XXXX-XXXX)" />
+        <button type="button" id="btn-activate-license" class="btn-primary">Ativar</button>
+      </div>
+      <div id="license-status-msg" class="muted" style="margin-top:8px;"></div>
+    </div>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Copiloto de Atendimento & Follow-up",
+  "version": "1.0.0",
+  "description": "Respostas rápidas com /comando, sequências de áudio/mídia e lembretes de follow-up localmente no WhatsApp Web.",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_title": "Copiloto WhatsApp Web",
+    "default_popup": "popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": [
+        "content/injected/ptt-bridge.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": [
+        "content/core/selectors.js",
+        "content/core/storage.js",
+        "content/core/dom-observer.js",
+        "content/engine/composer.js",
+        "content/engine/media-sender.js",
+        "content/engine/sequence-runner.js",
+        "content/ui/quick-bar.js",
+        "content/ui/followup-ui.js",
+        "content/ui/tags-bar.js",
+        "content/main.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
