@@ -1,287 +1,354 @@
 window.ZapCopilot = window.ZapCopilot || {};
 
-window.ZapCopilot.TagsBar = (() => {
-  const { Selectors, Storage } = window.ZapCopilot;
+window.ZapCopilot.TagsBarUI = (() => {
+  const { Selectors, Storage: CopilotStorage, DomObserver } = window.ZapCopilot;
 
-  const MAX_VISIBLE_CUSTOM_TAGS = 2; // Quantas etiquetas ficam visíveis direto na barra antes do "+N"
-  let activeFilter = null; // null | 'FOLLOWUP' | tagId
+  const MAX_VISIBLE_TAGS = 2; // Quantas etiquetas ficam visíveis na barra antes do "+N"
+  let hostEl = null;
+  let shadowRoot = null;
+  let activeFilter = null; // null | 'followup' | tagId
   let overflowOpen = false;
+  let isMounting = false;
 
-  function ensureStyles() {
-    if (document.getElementById('zc-tags-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'zc-tags-styles';
-    style.textContent = `
-      .zc-filter-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        height: 32px;
-        padding: 0 12px;
-        border-radius: 9999px;
-        border: 1px solid rgba(134, 150, 160, 0.25);
-        background: transparent;
-        color: #8696a0;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        white-space: nowrap;
-        flex-shrink: 0;
-        transition: background 0.15s, color 0.15s, border-color 0.15s;
-      }
-      .zc-filter-pill:hover {
-        background: rgba(134, 150, 160, 0.12);
-      }
-      .zc-filter-pill.active {
-        background: rgba(0, 168, 132, 0.18);
-        border-color: #00a884;
-        color: #00a884;
-      }
-      .zc-tag-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        flex-shrink: 0;
-      }
-      .zc-more-btn {
-        font-weight: 600;
-        padding: 0 10px;
-      }
-      .zc-overflow-popover {
-        position: fixed;
-        z-index: 99999;
-        background: #233138;
-        border: 1px solid rgba(134, 150, 160, 0.25);
-        border-radius: 12px;
-        padding: 8px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 190px;
-        max-width: 260px;
-        max-height: 280px;
-        overflow-y: auto;
-      }
-      .zc-overflow-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 8px 10px;
-        border-radius: 8px;
-        border: none;
-        background: transparent;
-        color: #e9edef;
-        font-size: 13px;
-        cursor: pointer;
-        text-align: left;
-        width: 100%;
-      }
-      .zc-overflow-item:hover {
-        background: rgba(134, 150, 160, 0.15);
-      }
-      .zc-overflow-item.active {
-        background: rgba(0, 168, 132, 0.2);
-        color: #00a884;
-        font-weight: 600;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  function closeOverflowPopover() {
-    overflowOpen = false;
-    const existing = document.getElementById('zc-tags-overflow-popover');
-    if (existing) existing.remove();
-  }
-
-  function openOverflowPopover(anchorBtn, hiddenTags, countsByTag) {
-    closeOverflowPopover();
-    overflowOpen = true;
-
-    const popover = document.createElement('div');
-    popover.id = 'zc-tags-overflow-popover';
-    popover.className = 'zc-overflow-popover';
-
-    hiddenTags.forEach(tag => {
-      const count = countsByTag[tag.id] || 0;
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = `zc-overflow-item ${activeFilter === tag.id ? 'active' : ''}`;
-      item.innerHTML = `
-        <span style="display:flex;align-items:center;gap:8px;overflow:hidden;">
-          <span class="zc-tag-dot" style="background:${tag.color};"></span>
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${tag.label}</span>
-        </span>
-        ${count > 0 ? `<span style="font-size:11px;opacity:0.8;">${count}</span>` : ''}
-      `;
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
-        activeFilter = activeFilter === tag.id ? null : tag.id;
-        closeOverflowPopover();
-        applyChatListFilter();
-        renderFilterBar();
-      });
-      popover.appendChild(item);
-    });
-
-    document.body.appendChild(popover);
-
-    const rect = anchorBtn.getBoundingClientRect();
-    const left = Math.min(rect.left, window.innerWidth - popover.offsetWidth - 12);
-    popover.style.top = `${rect.bottom + 6}px`;
-    popover.style.left = `${Math.max(8, left)}px`;
-  }
-
-  async function applyChatListFilter() {
-    const rows = Selectors.getVisibleChatRows();
-    if (!activeFilter) {
-      rows.forEach(row => { row.style.display = ''; });
-      return;
+  const STYLES = `
+    :host {
+      display: block;
+      width: 100%;
+      position: relative;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
+    .zc-tags-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 16px 8px;
+      background: #ffffff;
+      flex-wrap: nowrap;
+    }
+    .zc-filter-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 28px;
+      padding: 0 11px;
+      border-radius: 999px;
+      border: 1px solid #e9edef;
+      background: #f0f2f5;
+      color: #54656f;
+      font-size: 12.5px;
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .zc-filter-pill:hover {
+      background: #e9edef;
+      color: #111b21;
+    }
+    .zc-filter-pill.active {
+      background: #d9fdd3;
+      border-color: #25d366;
+      color: #008069;
+      font-weight: 600;
+    }
+    .zc-more-pill {
+      font-weight: 600;
+      padding: 0 10px;
+    }
+    .zc-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .zc-overflow-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% - 2px);
+      right: 16px;
+      min-width: 190px;
+      max-width: 240px;
+      max-height: 260px;
+      overflow-y: auto;
+      background: #ffffff;
+      border: 1px solid #e9edef;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(11, 20, 26, 0.16);
+      padding: 6px;
+      z-index: 950;
+    }
+    .zc-overflow-menu.open {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .zc-overflow-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: #111b21;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+    }
+    .zc-overflow-item:hover {
+      background: #f0f2f5;
+    }
+    .zc-overflow-item.active {
+      background: #d9fdd3;
+      color: #008069;
+      font-weight: 600;
+    }
+    .zc-results-drawer {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      max-height: 360px;
+      overflow-y: auto;
+      background: #ffffff;
+      border-top: 1px solid #e9edef;
+      border-bottom: 1px solid #d1d7db;
+      box-shadow: 0 10px 24px rgba(11, 20, 26, 0.16);
+      z-index: 900;
+      padding: 8px;
+    }
+    .zc-results-drawer.open {
+      display: block;
+    }
+    .zc-drawer-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #008069;
+      border-bottom: 1px solid #f0f2f5;
+    }
+    .zc-close-filter {
+      background: none;
+      border: none;
+      color: #54656f;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .zc-chat-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13.5px;
+      color: #111b21;
+    }
+    .zc-chat-row:hover {
+      background: #f0f2f5;
+    }
+  `;
 
-    const { followups, chatTags } = await Storage.getAll();
-    const activeFollowupContacts = new Set(
-      followups.filter(f => !f.completed).map(f => f.contactKey)
-    );
+  async function render() {
+    if (!shadowRoot) return;
+    const state = await CopilotStorage.getAll();
+    const rowEl = shadowRoot.querySelector('.zc-tags-row');
+    const overflowEl = shadowRoot.querySelector('.zc-overflow-menu');
+    const drawerEl = shadowRoot.querySelector('.zc-results-drawer');
+    const listEl = shadowRoot.querySelector('#zc-filtered-chats');
+    const titleEl = shadowRoot.querySelector('#zc-drawer-title');
 
-    rows.forEach(row => {
-      const contactKey = Selectors.getRowContactKey(row);
-      if (!contactKey) return;
+    rowEl.innerHTML = '';
+    overflowEl.innerHTML = '';
 
-      let match = false;
-      if (activeFilter === 'FOLLOWUP') {
-        match = activeFollowupContacts.has(contactKey);
-      } else {
-        const tags = chatTags[contactKey] || [];
-        match = tags.includes(activeFilter);
-      }
-      row.style.display = match ? '' : 'none';
+    // 1. Pill "Aguardando Retorno"
+    const pendingCount = state.followups.filter(f => !f.completed).length;
+    const fuPill = document.createElement('button');
+    fuPill.type = 'button';
+    fuPill.className = `zc-filter-pill ${activeFilter === 'followup' ? 'active' : ''}`;
+    fuPill.innerHTML = `<span>🕒 Retorno</span>${pendingCount > 0 ? `<b>(${pendingCount})</b>` : ''}`;
+    fuPill.addEventListener('click', () => {
+      overflowOpen = false;
+      activeFilter = activeFilter === 'followup' ? null : 'followup';
+      render();
     });
-  }
+    rowEl.appendChild(fuPill);
 
-  function createPill({ id, label, color = null, count = 0, isMore = false }) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `zc-filter-pill ${activeFilter === id ? 'active' : ''} ${isMore ? 'zc-more-btn' : ''}`;
-    btn.dataset.zcFilter = id;
-
-    btn.innerHTML = `
-      ${color ? `<span class="zc-tag-dot" style="background:${color};"></span>` : ''}
-      <span>${label}</span>
-      ${count > 0 ? `<span style="font-size:11px;opacity:0.85;">(${count})</span>` : ''}
-    `;
-    return btn;
-  }
-
-  async function renderFilterBar() {
-    ensureStyles();
-    const filtersRow = Selectors.getFiltersRow();
-    if (!filtersRow) return;
-
-    // Remove pílulas antigas injetadas pela extensão antes de re-renderizar
-    filtersRow.querySelectorAll('[data-zc-filter]').forEach(el => el.remove());
-
-    // Reseta filtro se o usuário clicar nas abas nativas do WhatsApp ("Todas", "Não lidas", etc.)
-    filtersRow.querySelectorAll('button:not([data-zc-filter])').forEach(nativeBtn => {
-      if (!nativeBtn.dataset.zcHooked) {
-        nativeBtn.dataset.zcHooked = '1';
-        nativeBtn.addEventListener('click', () => {
-          activeFilter = null;
-          closeOverflowPopover();
-          applyChatListFilter();
-          renderFilterBar();
-        });
-      }
-    });
-
-    const { customTags, chatTags, followups } = await Storage.getAll();
-    const activeFollowupsCount = followups.filter(f => !f.completed).length;
-
-    const countsByTag = {};
-    Object.values(chatTags).forEach(tagList => {
-      (tagList || []).forEach(tid => {
-        countsByTag[tid] = (countsByTag[tid] || 0) + 1;
-      });
-    });
-
-    // 1. Pílula fixa: Aguardando Retorno
-    const followupPill = createPill({
-      id: 'FOLLOWUP',
-      label: 'Aguardando Retorno',
-      color: '#f59e0b',
-      count: activeFollowupsCount
-    });
-    followupPill.addEventListener('click', () => {
-      activeFilter = activeFilter === 'FOLLOWUP' ? null : 'FOLLOWUP';
-      closeOverflowPopover();
-      applyChatListFilter();
-      renderFilterBar();
-    });
-    filtersRow.appendChild(followupPill);
-
-    // 2. Primeiras etiquetas visíveis diretamente na barra
-    const visibleTags = customTags.slice(0, MAX_VISIBLE_CUSTOM_TAGS);
-    const hiddenTags = customTags.slice(MAX_VISIBLE_CUSTOM_TAGS);
+    // 2. Divide entre etiquetas visíveis na barra e etiquetas extras no menu "+N"
+    const visibleTags = state.customTags.slice(0, MAX_VISIBLE_TAGS);
+    const hiddenTags = state.customTags.slice(MAX_VISIBLE_TAGS);
 
     visibleTags.forEach(tag => {
-      const pill = createPill({
-        id: tag.id,
-        label: tag.label,
-        color: tag.color,
-        count: countsByTag[tag.id] || 0
-      });
+      const count = Object.values(state.chatTags).filter(arr => arr.includes(tag.id)).length;
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = `zc-filter-pill ${activeFilter === tag.id ? 'active' : ''}`;
+      pill.innerHTML = `<span class="zc-dot" style="background:${tag.color}"></span><span>${tag.label}</span>${count > 0 ? `<b>(${count})</b>` : ''}`;
       pill.addEventListener('click', () => {
+        overflowOpen = false;
         activeFilter = activeFilter === tag.id ? null : tag.id;
-        closeOverflowPopover();
-        applyChatListFilter();
-        renderFilterBar();
+        render();
       });
-      filtersRow.appendChild(pill);
+      rowEl.appendChild(pill);
     });
 
-    // 3. Botão "+N" quando existem mais etiquetas além do limite visível
+    // 3. Botão "+N" e menu expansível se houver mais etiquetas
     if (hiddenTags.length > 0) {
       const activeHiddenTag = hiddenTags.find(t => t.id === activeFilter);
-      const moreBtn = createPill({
-        id: 'MORE_TAGS',
-        label: activeHiddenTag ? `+${hiddenTags.length} (${activeHiddenTag.label})` : `+${hiddenTags.length}`,
-        color: activeHiddenTag ? activeHiddenTag.color : null,
-        isMore: true
-      });
-      if (activeHiddenTag) moreBtn.classList.add('active');
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = `zc-filter-pill zc-more-pill ${activeHiddenTag || overflowOpen ? 'active' : ''}`;
+      moreBtn.innerHTML = activeHiddenTag
+        ? `<span class="zc-dot" style="background:${activeHiddenTag.color}"></span><span>+${hiddenTags.length} (${activeHiddenTag.label})</span>`
+        : `<span>+${hiddenTags.length}</span>`;
 
       moreBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (overflowOpen) {
-          closeOverflowPopover();
-        } else {
-          openOverflowPopover(moreBtn, hiddenTags, countsByTag);
-        }
+        overflowOpen = !overflowOpen;
+        render();
       });
-      filtersRow.appendChild(moreBtn);
+      rowEl.appendChild(moreBtn);
+
+      hiddenTags.forEach(tag => {
+        const count = Object.values(state.chatTags).filter(arr => arr.includes(tag.id)).length;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = `zc-overflow-item ${activeFilter === tag.id ? 'active' : ''}`;
+        item.innerHTML = `
+          <span style="display:flex;align-items:center;gap:8px;overflow:hidden;">
+            <span class="zc-dot" style="background:${tag.color}"></span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${tag.label}</span>
+          </span>
+          ${count > 0 ? `<b style="font-size:11.5px;color:#54656f;">(${count})</b>` : ''}
+        `;
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          overflowOpen = false;
+          activeFilter = activeFilter === tag.id ? null : tag.id;
+          render();
+        });
+        overflowEl.appendChild(item);
+      });
+    } else {
+      overflowOpen = false;
+    }
+
+    overflowEl.classList.toggle('open', overflowOpen && hiddenTags.length > 0);
+
+    // 4. Drawer com contatos correspondentes ao filtro ativo
+    if (!activeFilter) {
+      drawerEl.classList.remove('open');
+      return;
+    }
+
+    drawerEl.classList.add('open');
+    listEl.innerHTML = '';
+
+    let items = [];
+    if (activeFilter === 'followup') {
+      titleEl.textContent = 'Aguardando Retorno';
+      items = state.followups
+        .filter(f => !f.completed)
+        .map(f => ({ contactKey: f.contactKey, sub: f.note || 'Follow-up agendado' }));
+    } else {
+      const tagObj = state.customTags.find(t => t.id === activeFilter);
+      titleEl.textContent = `Etiqueta: ${tagObj?.label || ''}`;
+      items = Object.entries(state.chatTags)
+        .filter(([, tags]) => tags.includes(activeFilter))
+        .map(([contactKey]) => ({ contactKey, sub: 'Clique para abrir a conversa' }));
+    }
+
+    if (items.length === 0) {
+      listEl.innerHTML = `<div style="padding:14px;text-align:center;font-size:12.5px;color:#667781;">Nenhuma conversa marcada neste filtro ainda.</div>`;
+      return;
+    }
+
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'zc-chat-row';
+      div.innerHTML = `
+        <div>
+          <div style="font-weight:600;">${item.contactKey}</div>
+          <div style="font-size:11.5px;color:#667781;">${item.sub}</div>
+        </div>
+        <span style="font-size:12px;color:#008069;">Abrir →</span>
+      `;
+      div.addEventListener('click', async () => {
+        activeFilter = null;
+        overflowOpen = false;
+        render();
+        await Selectors.openChatByContactKey(item.contactKey);
+      });
+      listEl.appendChild(div);
+    });
+  }
+
+  async function mount() {
+    if (isMounting) return;
+    const filtersRow = Selectors.getFiltersRow();
+    if (!filtersRow || !filtersRow.parentElement) return;
+
+    if (filtersRow.parentElement.querySelector('#zap-copilot-tagsbar-host')) {
+      return;
+    }
+
+    isMounting = true;
+    try {
+      hostEl = document.createElement('div');
+      hostEl.id = 'zap-copilot-tagsbar-host';
+      shadowRoot = hostEl.attachShadow({ mode: 'open' });
+
+      shadowRoot.innerHTML = `
+        <style>${STYLES}</style>
+        <div class="zc-tags-row"></div>
+        <div class="zc-overflow-menu"></div>
+        <div class="zc-results-drawer">
+          <div class="zc-drawer-head">
+            <span id="zc-drawer-title">Filtro</span>
+            <button type="button" class="zc-close-filter">Fechar ✕</button>
+          </div>
+          <div id="zc-filtered-chats"></div>
+        </div>
+      `;
+
+      shadowRoot.querySelector('.zc-close-filter').addEventListener('click', () => {
+        activeFilter = null;
+        overflowOpen = false;
+        render();
+      });
+
+      filtersRow.insertAdjacentElement('afterend', hostEl);
+      await render();
+    } finally {
+      isMounting = false;
     }
   }
 
-  // Fecha o popover ao clicar fora
+  // Fecha o menu "+N" se o usuário clicar fora do componente
   document.addEventListener('click', (e) => {
-    if (overflowOpen && !e.target.closest('#zc-tags-overflow-popover') && !e.target.closest('[data-zc-filter="MORE_TAGS"]')) {
-      closeOverflowPopover();
+    if (overflowOpen && hostEl && !hostEl.contains(e.target)) {
+      overflowOpen = false;
+      render();
     }
   });
 
-  // Atualiza automaticamente quando etiquetas forem criadas/excluídas no popup ou aplicadas em chats
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && (changes.customTags || changes.chatTags || changes.followups)) {
-      renderFilterBar();
-      applyChatListFilter();
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.followups || changes.customTags || changes.chatTags) {
+      render();
     }
   });
 
   function init() {
-    renderFilterBar();
+    DomObserver.on('appReady', () => mount());
+    DomObserver.on('domUpdated', () => mount());
   }
 
-  return { init, renderFilterBar, applyChatListFilter };
+  return { init };
 })();

@@ -10,25 +10,59 @@ window.ZapCopilot.Composer = (() => {
     return 'Boa noite';
   }
 
+  function getCleanContactNames() {
+    const info = Selectors.getActiveContactInfo ? Selectors.getActiveContactInfo() : null;
+    let rawName = (info?.fullName || info?.name || info?.firstName || '').trim();
+
+    // Fallback direto no DOM do cabeçalho caso Selectors retorne vazio
+    if (!rawName) {
+      const header = document.querySelector('#main header');
+      const titleEl =
+        header?.querySelector('span[dir="auto"][title]') ||
+        header?.querySelector('div[role="button"] span[dir="auto"]') ||
+        header?.querySelector('span[dir="auto"]');
+      rawName = (titleEl?.getAttribute('title') || titleEl?.textContent || '').trim();
+    }
+
+    const lower = rawName.toLowerCase();
+    // Ignora números de telefone não salvos (+55...) ou status ("online", "digitando...")
+    if (
+      !rawName ||
+      lower === 'online' ||
+      lower.includes('digitando') ||
+      lower.includes('gravando') ||
+      lower.includes('visto por último') ||
+      /^\+?\d[\d\s().-]+$/.test(rawName)
+    ) {
+      return { firstName: '', fullName: '' };
+    }
+
+    const parts = rawName.split(/\s+/);
+    const firstWord = parts[0].replace(/[^\p{L}-]/gu, '');
+    const firstName = firstWord
+      ? firstWord.charAt(0).toUpperCase() + firstWord.slice(1).toLowerCase()
+      : '';
+
+    return { firstName, fullName: rawName };
+  }
+
   /**
-   * Substitui {nome} e {saudacao} no template.
-   * Se o contato não tiver nome salvo (ex: número avulso), evita espaços duplos antes de vírgulas.
+   * Substitui {nome}, {nome_completo} e {saudacao} no template.
+   * Se o contato não tiver nome salvo (número avulso), limpa pontuações sobrando.
    */
   function resolveVariables(template) {
     if (!template) return '';
-    const info = Selectors.getActiveContactInfo();
-    const firstName = info?.firstName || '';
+    const { firstName, fullName } = getCleanContactNames();
     const greeting = getGreeting();
 
     let text = template
       .replace(/\{saudacao\}/gi, greeting)
+      .replace(/\{nome_completo\}/gi, fullName)
       .replace(/\{nome\}/gi, firstName);
 
     if (!firstName) {
       text = text
-        .replace(/,\s*!/g, '!')
-        .replace(/,\s*\?/g, '?')
-        .replace(/,\s*\./g, '.')
+        .replace(/,\s*([!?.])/g, '$1')
         .replace(/\s{2,}/g, ' ')
         .trim();
     }

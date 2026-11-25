@@ -1,9 +1,11 @@
 (() => {
   const LIMITS = {
-    FREE: { maxShortcuts: 3, maxCustomTags: 2, allowMedia: false, allowBackup: false },
-    PRO: { maxShortcuts: Infinity, maxCustomTags: Infinity, allowMedia: true, allowBackup: true }
+    FREE: { maxShortcuts: 3, maxCustomTags: 2, maxFollowups: 3, allowMedia: false, allowBackup: false },
+    PRO: { maxShortcuts: Infinity, maxCustomTags: Infinity, maxFollowups: Infinity, allowMedia: true, allowBackup: true }
   };
 
+  // Deixe vazio ('') enquanto testa localmente; preencha com a URL do seu backend em produção
+  const LICENSE_API_BASE = '';
   const MAX_MEDIA_BYTES = 15 * 1024 * 1024; // 15 MB por mídia
 
   let state = {
@@ -12,7 +14,8 @@
     customTags: [],
     chatTags: {},
     settings: { showQuickBar: true, defaultDelayMs: 2000 },
-    license: { plan: 'FREE', key: null, verifiedAt: null }
+    license: { plan: 'FREE', key: null, verifiedAt: null, maxDevices: 1 },
+    deviceId: null
   };
 
   let draftBlocks = [];
@@ -88,6 +91,32 @@
     return `${m}:${s}`;
   }
 
+  function formatDateTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function insertVariableAtCursor(textarea, idx, token) {
+    if (!textarea) return;
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    const current = textarea.value;
+    const updated = current.slice(0, start) + token + current.slice(end);
+
+    textarea.value = updated;
+    draftBlocks[idx].content = updated;
+    textarea.focus();
+
+    const newPos = start + token.length;
+    textarea.setSelectionRange(newPos, newPos);
+  }
+
   function isPro() {
     return state.license?.plan === 'PRO';
   }
@@ -101,16 +130,24 @@
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tabName}`));
   }
 
+  async function ensureDeviceId(existingId) {
+    if (existingId) return existingId;
+    const newId = (crypto.randomUUID ? crypto.randomUUID() : 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10));
+    await chrome.storage.local.set({ deviceId: newId });
+    return newId;
+  }
+
   async function loadState() {
     const data = await chrome.storage.local.get([
-      'shortcuts', 'followups', 'customTags', 'chatTags', 'settings', 'license'
+      'shortcuts', 'followups', 'customTags', 'chatTags', 'settings', 'license', 'deviceId'
     ]);
     state.shortcuts = data.shortcuts || [];
     state.followups = data.followups || [];
     state.customTags = data.customTags || [];
     state.chatTags = data.chatTags || {};
     state.settings = { showQuickBar: true, defaultDelayMs: 2000, ...(data.settings || {}) };
-    state.license = { plan: 'FREE', key: null, verifiedAt: null, ...(data.license || {}) };
+    state.license = { plan: 'FREE', key: null, verifiedAt: null, maxDevices: 1, ...(data.license || {}) };
+    state.deviceId = await ensureDeviceId(data.deviceId);
     renderAll();
   }
 
@@ -128,6 +165,7 @@
     }
 
     renderShortcuts();
+    renderFollowups();
     renderTags();
     document.getElementById('cfg-show-quickbar').checked = state.settings.showQuickBar !== false;
     if (state.license.key) {
@@ -136,6 +174,17 @@
         ? '✅ Licença PRO ativa neste navegador.'
         : '⚠️ Licença expirada ou inválida.';
     }
+  }
+
+  async function moveShortcut(index, direction) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= state.shortcuts.length) return;
+    const copy = [...state.shortcuts];
+    const [moved] = copy.splice(index, 1);
+    copy.splice(targetIndex, 0, moved);
+    state.shortcuts = copy;
+    await chrome.storage.local.set({ shortcuts: state.shortcuts });
+    renderShortcuts();
   }
 
   function renderShortcuts() {
@@ -148,7 +197,7 @@
     const list = document.getElementById('shortcuts-list');
     list.innerHTML = '';
 
-    state.shortcuts.forEach(sc => {
+    state.shortcuts.forEach((sc, idx) => {
       const first = sc.blocks?.[0];
       const preview = first?.type === 'text'
         ? first.content
@@ -157,7 +206,7 @@
       const item = document.createElement('div');
       item.className = 'list-item';
       item.innerHTML = `
-        <div>
+        <div style="min-width:0;flex:1;">
           <div>
             <span class="item-title">${sc.title}</span>
             <span class="item-cmd">/${sc.command}</span>
@@ -165,11 +214,20 @@
           </div>
           <div class="item-sub">${preview}</div>
         </div>
-        <div class="item-actions">
+        <div class="item-actions" style="display:flex;gap:4px;flex-shrink:0;">
+          <button class="btn-xs" data-up="${idx}" title="Mover para cima" ${idx === 0 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>⬆️</button>
+          <button class="btn-xs" data-down="${idx}" title="Mover para baixo" ${idx === state.shortcuts.length - 1 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>⬇️</button>
           <button class="btn-xs" data-edit="${sc.id}" title="Editar">✏️</button>
           <button class="btn-xs" data-del="${sc.id}" title="Excluir">🗑️</button>
         </div>
       `;
+
+      const upBtn = item.querySelector('[data-up]');
+      if (upBtn && idx > 0) upBtn.addEventListener('click', () => moveShortcut(idx, -1));
+
+      const downBtn = item.querySelector('[data-down]');
+      if (downBtn && idx < state.shortcuts.length - 1) downBtn.addEventListener('click', () => moveShortcut(idx, 1));
+
       item.querySelector('[data-edit]').addEventListener('click', () => openShortcutForm(sc));
       item.querySelector('[data-del]').addEventListener('click', async () => {
         const target = state.shortcuts.find(s => s.id === sc.id);
@@ -182,13 +240,96 @@
     });
   }
 
-  async function openShortcutForm(shortcut = null) {
-    // Abre em aba completa para evitar que o popup feche ao abrir seletor de arquivos ou permissão de microfone
-    if (window.innerWidth < 500 && !location.search.includes('full=1')) {
-      const params = new URLSearchParams({ full: '1' });
-      if (shortcut?.id) params.set('edit', shortcut.id);
-      chrome.tabs.create({ url: chrome.runtime.getURL(`popup/popup.html?${params.toString()}`) });
-      window.close();
+  function renderFollowups() {
+    let container = document.getElementById('followups-list');
+    if (!container) {
+      const shortcutsList = document.getElementById('shortcuts-list');
+      if (!shortcutsList || !shortcutsList.parentElement) return;
+
+      const wrapper = document.createElement('div');
+      wrapper.id = 'zc-followups-section';
+      wrapper.style.marginTop = '14px';
+      wrapper.style.paddingTop = '12px';
+      wrapper.style.borderTop = '1px solid #e5e7eb';
+      wrapper.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <strong style="font-size:13px;">⏰ Lembretes de Follow-up</strong>
+          <span id="followups-counter" class="muted" style="font-size:11.5px;"></span>
+        </div>
+        <div id="followups-list"></div>
+      `;
+      shortcutsList.insertAdjacentElement('afterend', wrapper);
+      container = document.getElementById('followups-list');
+    }
+
+    const pending = state.followups
+      .filter(f => !f.completed)
+      .sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0));
+
+    const counterEl = document.getElementById('followups-counter');
+    if (counterEl) {
+      const limits = getLimits();
+      counterEl.textContent = isPro()
+        ? `${pending.length} ativos (Ilimitado)`
+        : `${pending.length}/${limits.maxFollowups} ativos`;
+    }
+
+    container.innerHTML = '';
+    if (pending.length === 0) {
+      container.innerHTML = `<div class="muted" style="font-size:12px;">Nenhum follow-up pendente no momento.</div>`;
+      return;
+    }
+
+    pending.forEach(fu => {
+      const overdue = fu.dueAt && fu.dueAt <= Date.now();
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      item.innerHTML = `
+        <div style="min-width:0;flex:1;">
+          <div>
+            <span class="item-title">${fu.contactKey}</span>
+            <span class="item-cmd" style="${overdue ? 'background:#fee2e2;color:#b91c1c;' : ''}">
+              ${overdue ? '⚠️ Vencido • ' : '🕒 '}${formatDateTime(fu.dueAt)}
+            </span>
+          </div>
+          <div class="item-sub">${fu.note || 'Sem observação'}</div>
+        </div>
+        <div class="item-actions" style="display:flex;gap:4px;flex-shrink:0;">
+          <button class="btn-xs" data-done-fu="${fu.id}" title="Concluir follow-up">✅</button>
+          <button class="btn-xs" data-del-fu="${fu.id}" title="Excluir follow-up">🗑️</button>
+        </div>
+      `;
+
+      item.querySelector('[data-done-fu]').addEventListener('click', async () => {
+        state.followups = state.followups.map(f => f.id === fu.id ? { ...f, completed: true, completedAt: Date.now() } : f);
+        await chrome.storage.local.set({ followups: state.followups });
+        renderFollowups();
+      });
+
+      item.querySelector('[data-del-fu]').addEventListener('click', async () => {
+        state.followups = state.followups.filter(f => f.id !== fu.id);
+        await chrome.storage.local.set({ followups: state.followups });
+        renderFollowups();
+      });
+
+      container.appendChild(item);
+    });
+  }
+
+  function openInDedicatedTab(shortcutId = null, pendingBlockType = null) {
+    const params = new URLSearchParams({ full: '1' });
+    if (shortcutId) params.set('edit', shortcutId);
+    if (pendingBlockType) params.set('addBlock', pendingBlockType);
+    chrome.tabs.create({ url: chrome.runtime.getURL(`popup/popup.html?${params.toString()}`) });
+    window.close();
+  }
+
+  async function openShortcutForm(shortcut = null, pendingBlockType = null) {
+    const hasMediaBlocks = shortcut?.blocks?.some(b => b.type !== 'text');
+    const needsDedicatedTab = Boolean(hasMediaBlocks || pendingBlockType);
+
+    if (needsDedicatedTab && window.innerWidth < 500 && !location.search.includes('full=1')) {
+      openInDedicatedTab(shortcut?.id || null, pendingBlockType);
       return;
     }
 
@@ -213,7 +354,10 @@
       ? JSON.parse(JSON.stringify(shortcut.blocks))
       : [{ type: 'text', content: '' }];
 
-    // Carrega preview de áudio caso esteja editando um atalho existente com áudio
+    if (pendingBlockType && draftBlocks.length < 3) {
+      draftBlocks.push({ type: pendingBlockType, mediaId: null, fileName: '' });
+    }
+
     for (const blk of draftBlocks) {
       if (blk.type === 'audio' && blk.mediaId && !blk.previewUrl) {
         blk.previewUrl = await getMediaDataUrl(blk.mediaId);
@@ -223,14 +367,27 @@
     renderDraftBlocks();
   }
 
+  function moveDraftBlock(index, direction) {
+    if (activeRecorder) {
+      alert('Pare a gravação de áudio antes de reordenar os blocos.');
+      return;
+    }
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= draftBlocks.length) return;
+
+    const copy = [...draftBlocks];
+    const [moved] = copy.splice(index, 1);
+    copy.splice(targetIndex, 0, moved);
+    draftBlocks = copy;
+    renderDraftBlocks();
+  }
+
   async function toggleAudioRecording(idx) {
-    // Se já está gravando este bloco, para e salva
     if (activeRecorder && activeRecordingIdx === idx) {
       stopActiveRecording();
       return;
     }
 
-    // Se estava gravando outro bloco, interrompe antes
     if (activeRecorder) {
       stopActiveRecording();
     }
@@ -301,7 +458,15 @@
 
       let bodyHtml = '';
       if (blk.type === 'text') {
-        bodyHtml = `<textarea data-idx="${idx}" placeholder="Use {nome} e {saudacao}...">${blk.content || ''}</textarea>`;
+        bodyHtml = `
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+            <span class="muted" style="font-size:11px;">Inserir variável:</span>
+            <button type="button" class="btn-xs" data-var="{nome}" title="Primeiro nome do contato">+ {nome}</button>
+            <button type="button" class="btn-xs" data-var="{nome_completo}" title="Nome completo do contato">+ {nome_completo}</button>
+            <button type="button" class="btn-xs" data-var="{saudacao}" title="Bom dia / Boa tarde / Boa noite">+ {saudacao}</button>
+          </div>
+          <textarea data-idx="${idx}" placeholder="Ex: {saudacao}, {nome}! Tudo bem?">${blk.content || ''}</textarea>
+        `;
       } else if (blk.type === 'audio') {
         bodyHtml = `
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
@@ -322,12 +487,28 @@
       }
 
       div.innerHTML = `
-        <div class="block-item-head">
-          <span>Bloco ${idx + 1}: ${labels[blk.type] || blk.type}</span>
-          ${draftBlocks.length > 1 ? `<button type="button" class="btn-xs" data-rm="${idx}">Remover</button>` : ''}
+        <div class="block-item-head" style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+          <span><strong>${idx + 1}º envio:</strong> ${labels[blk.type] || blk.type}</span>
+          <div style="display:flex;gap:4px;align-items:center;">
+            ${draftBlocks.length > 1 ? `
+              <button type="button" class="btn-xs" data-blk-up="${idx}" title="Enviar antes" ${idx === 0 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>⬆️</button>
+              <button type="button" class="btn-xs" data-blk-down="${idx}" title="Enviar depois" ${idx === draftBlocks.length - 1 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>⬇️</button>
+              <button type="button" class="btn-xs" data-rm="${idx}" title="Remover bloco">Remover</button>
+            ` : ''}
+          </div>
         </div>
         ${bodyHtml}
       `;
+
+      const blkUp = div.querySelector('[data-blk-up]');
+      if (blkUp && idx > 0) {
+        blkUp.addEventListener('click', () => moveDraftBlock(idx, -1));
+      }
+
+      const blkDown = div.querySelector('[data-blk-down]');
+      if (blkDown && idx < draftBlocks.length - 1) {
+        blkDown.addEventListener('click', () => moveDraftBlock(idx, 1));
+      }
 
       if (div.querySelector('[data-rm]')) {
         div.querySelector('[data-rm]').addEventListener('click', () => {
@@ -346,6 +527,12 @@
       if (ta) {
         ta.addEventListener('input', (e) => {
           draftBlocks[idx].content = e.target.value;
+        });
+
+        div.querySelectorAll('[data-var]').forEach(varBtn => {
+          varBtn.addEventListener('click', () => {
+            insertVariableAtCursor(ta, idx, varBtn.dataset.var);
+          });
         });
       }
 
@@ -428,6 +615,13 @@
         alert('Cada atalho suporta no máximo 3 blocos em sequência.');
         return;
       }
+
+      if (type !== 'text' && window.innerWidth < 500 && !location.search.includes('full=1')) {
+        const currentId = document.getElementById('sc-id').value || null;
+        openInDedicatedTab(currentId, type);
+        return;
+      }
+
       draftBlocks.push(type === 'text' ? { type: 'text', content: '' } : { type, mediaId: null, fileName: '' });
       renderDraftBlocks();
     });
@@ -450,7 +644,6 @@
       return;
     }
 
-    // Remove previewUrl antes de salvar para não duplicar o Base64 dentro de state.shortcuts
     const validBlocks = draftBlocks
       .filter(b => (b.type === 'text' ? b.content?.trim() : b.mediaId))
       .map(({ previewUrl, ...cleanBlock }) => cleanBlock);
@@ -557,11 +750,39 @@
     const key = document.getElementById('license-key-input').value.trim().toUpperCase();
     if (!key) return;
 
+    // 1. Validação online real quando LICENSE_API_BASE estiver configurada
+    if (LICENSE_API_BASE) {
+      try {
+        const url = `${LICENSE_API_BASE}/api/license/verify?key=${encodeURIComponent(key)}&deviceId=${encodeURIComponent(state.deviceId)}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        if (resp.ok && data.valid) {
+          state.license = {
+            plan: 'PRO',
+            key,
+            verifiedAt: Date.now(),
+            maxDevices: data.maxDevices || 1
+          };
+          await chrome.storage.local.set({ license: state.license });
+          renderAll();
+          alert('Plano PRO ativado com sucesso!');
+        } else {
+          alert(data.message || 'Não foi possível validar esta chave de licença.');
+        }
+      } catch (err) {
+        alert('Erro de conexão ao verificar a licença. Tente novamente em instantes.');
+      }
+      return;
+    }
+
+    // 2. Fallback para testes locais antes de conectar a API
     if (key.startsWith('PRO-') && key.length >= 8) {
       state.license = {
         plan: 'PRO',
         key,
-        verifiedAt: Date.now()
+        verifiedAt: Date.now(),
+        maxDevices: 1
       };
       await chrome.storage.local.set({ license: state.license });
       renderAll();
@@ -576,8 +797,9 @@
     const params = new URLSearchParams(location.search);
     if (params.get('full') === '1') {
       const editId = params.get('edit');
+      const addBlock = params.get('addBlock');
       const target = editId ? state.shortcuts.find(s => s.id === editId) : null;
-      openShortcutForm(target || null);
+      openShortcutForm(target || null, addBlock || null);
     }
   });
 })();
